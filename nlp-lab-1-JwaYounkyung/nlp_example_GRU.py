@@ -51,7 +51,7 @@ trainset, valset = trainset.split(split_ratio=0.8)
 
 train_iter, val_iter, test_iter = legacy.data.BucketIterator.splits(
         (trainset, valset, testset), batch_size=BATCH_SIZE,
-        shuffle=True, repeat=False)
+        shuffle=True, sort=False, repeat=False)
 
 print('훈련 데이터의 미니 배치의 개수 : {}'.format(len(train_iter)))
 print('테스트 데이터의 미니 배치의 개수 : {}'.format(len(test_iter)))
@@ -65,7 +65,7 @@ print(batch.text.shape)
 # 꺼낸 미니배치를 다시 담아
 train_iter, val_iter, test_iter = legacy.data.BucketIterator.splits(
         (trainset, valset, testset), batch_size=BATCH_SIZE,
-        shuffle=True, repeat=False)
+        shuffle=True, sort=False, repeat=False)
 
 class GRU(nn.Module):
     def __init__(self, n_layers, hidden_dim, n_vocab, embed_dim, n_classes, dropout_p=0.2):
@@ -119,7 +119,7 @@ def evaluate(model, val_iter):
         loss = F.cross_entropy(logit, y, reduction='sum')
         total_loss += loss.item()
         corrects += (logit.max(1)[1].view(y.size()).data == y.data).sum()
-    size = len(val_iter.dataset)
+    size = len(val_iter.dataset) # validation data 전체 개수
     avg_loss = total_loss / size
     avg_accuracy = 100.0 * corrects / size
     return avg_loss, avg_accuracy
@@ -143,8 +143,4 @@ model.load_state_dict(torch.load('./snapshot/txtclassification.pt'))
 test_loss, test_acc = evaluate(model, test_iter)
 print('테스트 오차: %5.2f | 테스트 정확도: %5.2f' % (test_loss, test_acc))
 
-inputs = torch.rand(3, 4, 5) # 임의의 3차원 텐서 생성
-print(inputs)
-print(inputs[:, -1, :])
-print('텐서의 크기 :',inputs[:, -1, :].shape)
 

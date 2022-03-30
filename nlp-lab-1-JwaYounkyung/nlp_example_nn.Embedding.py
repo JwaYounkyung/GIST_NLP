@@ -51,7 +51,7 @@ print(lookup_result)
 
 # 위에 있는 embedding_table을 만드는격
 embedding_layer = nn.Embedding(num_embeddings=len(vocab), # dictionary 크기
-                               embedding_dim=3, # embedding vector dimension(label 수와 같음)
+                               embedding_dim=3, # embedding vector dimension(임의로 정할 수 있음 128등)
                                padding_idx=1) # <pad> index
 
 print(embedding_layer.weight)

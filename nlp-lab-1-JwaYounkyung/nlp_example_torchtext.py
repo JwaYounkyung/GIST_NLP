@@ -10,7 +10,7 @@ import pandas as pd
 # 영화 리뷰가 긍정인지(1) 부정인지(0) 분류하는 데이터 
 # urllib.request.urlretrieve("https://raw.githubusercontent.com/LawrenceDuan/IMDb-Review-Analysis/master/IMDb_Reviews.csv", filename="IMDb_Reviews.csv")
 
-df = pd.read_csv('IMDb_Reviews.csv', encoding='latin1')
+df = pd.read_csv('data/IMDb_Reviews.csv', encoding='latin1')
 
 print('전체 샘플의 개수 : {}'.format(len(df)))
 
