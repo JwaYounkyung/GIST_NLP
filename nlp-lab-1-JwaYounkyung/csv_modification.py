@@ -31,11 +31,11 @@ for i in range(len(test)):
     
 train_df = pd.DataFrame(
     {'Text': train_input,
-        'Label': train_output
+     'Label': train_output
     })
 test_df = pd.DataFrame(
     {'Text': test_input,
-        'Label': [0]*len(test_input)
+     'Label': [0]*len(test_input)
     })
 
 train_df.to_csv("data/train_lab1.csv", index=False)

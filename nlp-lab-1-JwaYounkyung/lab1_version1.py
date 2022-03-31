@@ -11,7 +11,7 @@ random.seed(SEED)
 torch.manual_seed(SEED)
 
 # hyper-parameter
-BATCH_SIZE = 64
+BATCH_SIZE = 16
 lr = 0.001
 EPOCHS = 10
 
@@ -36,9 +36,6 @@ print(vars(trainset[0]))
 TEXT.build_vocab(trainset, min_freq=5)
 LABEL.build_vocab(trainset)
 
-print(TEXT.vocab.stoi)
-print(LABEL.vocab.stoi)
-
 vocab_size = len(TEXT.vocab)
 n_classes = len(LABEL.vocab)
 
@@ -56,16 +53,6 @@ train_iter, val_iter, test_iter = legacy.data.BucketIterator.splits(
 print('훈련 데이터의 미니 배치의 개수 : {}'.format(len(train_iter)))
 print('테스트 데이터의 미니 배치의 개수 : {}'.format(len(test_iter)))
 print('검증 데이터의 미니 배치의 개수 : {}'.format(len(val_iter)))
-
-batch = next(iter(train_iter)) # 첫번째 미니배치
-print(batch.text.shape) # batch_size, max_length
-batch = next(iter(train_iter)) # 두번째 미니배치
-print(batch.text.shape)
-
-# 꺼낸 미니배치를 다시 담아
-train_iter, val_iter, test_iter = legacy.data.BucketIterator.splits(
-        (trainset, valset, testset), batch_size=BATCH_SIZE,
-        shuffle=True, sort=False, repeat=False)
 
 class GRU(nn.Module):
     def __init__(self, n_layers, hidden_dim, n_vocab, embed_dim, n_classes, dropout_p=0.2):
@@ -140,8 +127,9 @@ for e in range(1, EPOCHS+1):
         torch.save(model.state_dict(), './snapshot/GRU_lab1.pt')
         best_val_loss = val_loss
 
+'''
 model.load_state_dict(torch.load('./snapshot/GRU_lab1.pt'))
 test_loss, test_acc = evaluate(model, test_iter)
 print('테스트 오차: %5.2f | 테스트 정확도: %5.2f' % (test_loss, test_acc))
-
+'''
 
