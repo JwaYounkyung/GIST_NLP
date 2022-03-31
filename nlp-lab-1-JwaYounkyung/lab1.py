@@ -1,4 +1,5 @@
 import os
+import time
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -12,8 +13,8 @@ random.seed(SEED)
 torch.manual_seed(SEED)
 
 # hyper-parameter
-BATCH_SIZE = 16
-lr = 0.001
+BATCH_SIZE = 4
+lr = 10
 EPOCHS = 100
 
 USE_CUDA = torch.cuda.is_available()
@@ -23,7 +24,6 @@ print("cpu와 cuda 중 다음 기기로 학습함:", DEVICE)
 TEXT = legacy.data.Field(sequential=True, batch_first=True, fix_length=20)
 LABEL = legacy.data.Field(sequential=False, batch_first=True)
 
-# 전체 데이터를 훈련 데이터와 테스트 데이터를 5:5 비율로 나누기
 trainset, testset = legacy.data.TabularDataset.splits(
         path='data', train='train_lab1.csv', test='test_lab1.csv', format='csv',
         fields=[('text', TEXT), ('label', LABEL)], skip_header=True)
@@ -34,7 +34,7 @@ print('testset의 구성 요소 출력 : ', testset.fields)
 print(vars(trainset[0]))
 
 # Dictionary 생성
-TEXT.build_vocab(trainset, min_freq=5)
+TEXT.build_vocab(trainset, min_freq=0)
 LABEL.build_vocab(trainset)
 
 vocab_size = len(TEXT.vocab)
@@ -49,113 +49,134 @@ trainset, valset = trainset.split(split_ratio=0.8)
 
 train_iter, val_iter, test_iter = legacy.data.BucketIterator.splits(
         (trainset, valset, testset), batch_size=BATCH_SIZE,
-        shuffle=True, sort=False, repeat=False)
+        shuffle=True, repeat=False, sort=False)
 
-print('훈련 데이터의 미니 배치의 개수 : {}'.format(len(train_iter)))
-print('테스트 데이터의 미니 배치의 개수 : {}'.format(len(test_iter)))
-print('검증 데이터의 미니 배치의 개수 : {}'.format(len(val_iter)))
+print('train 데이터의 미니 배치의 개수 : {}'.format(len(train_iter))) # 180*4
+print('validate 데이터의 미니 배치의 개수 : {}'.format(len(val_iter))) # 45*4
+print('test 데이터의 미니 배치의 개수 : {}'.format(len(test_iter))) # 25*4
 
 # %%
-class GRU(nn.Module):
-    def __init__(self, n_layers, hidden_dim, n_vocab, embed_dim, n_classes, dropout_p=0.2):
-        super(GRU, self).__init__()
-        self.n_layers = n_layers
-        self.hidden_dim = hidden_dim
+# Model
+class TextClassificationModel(nn.Module):
 
-        self.embed = nn.Embedding(n_vocab, embed_dim)
-        self.dropout = nn.Dropout(dropout_p)
-        self.gru = nn.GRU(embed_dim, self.hidden_dim,
-                          num_layers=self.n_layers,
-                          batch_first=True)
-        self.bnorm = nn.BatchNorm1d(n_classes)
-        self.relu = nn.ReLU(inplace=True)
-        self.out = nn.Linear(self.hidden_dim, n_classes)
+    def __init__(self, vocab_size, embed_dim, num_class):
+        super(TextClassificationModel, self).__init__()
+        self.embedding = nn.EmbeddingBag(vocab_size, embed_dim, sparse=True)
+        self.fc = nn.Linear(embed_dim, num_class)
+        self.init_weights()
 
-    def forward(self, x):
-        x = self.embed(x)
-        h_0 = self._init_state(batch_size=x.size(0)) # 첫번째 히든 스테이트를 0벡터로 초기화
-        x, _ = self.gru(x, h_0)  # GRU의 리턴값은 (배치 크기, 시퀀스 길이, 은닉 상태의 크기)
-        x = self.relu(self.bnorm(x))
-        h_t = x[:,-1,:] # (배치 크기, 은닉 상태의 크기)의 텐서로 크기가 변경됨. 즉, 마지막 time-step의 은닉 상태만 가져온다.
-        self.dropout(h_t)
-        logit = self.out(h_t)  # (배치 크기, 은닉 상태의 크기) -> (배치 크기, 출력층의 크기)
-        return logit
+    def init_weights(self):
+        initrange = 0.5
+        self.embedding.weight.data.uniform_(-initrange, initrange)
+        self.fc.weight.data.uniform_(-initrange, initrange)
+        self.fc.bias.data.zero_()
 
-    def _init_state(self, batch_size=1):
-        weight = next(self.parameters()).data
-        return weight.new(self.n_layers, batch_size, self.hidden_dim).zero_()
+    def forward(self, text):
+        embedded = self.embedding(text)
+        return self.fc(embedded)
 
+emsize = 64
+model = TextClassificationModel(vocab_size, emsize, n_classes).to(DEVICE)
 
-model = GRU(1, 256, vocab_size, 128, n_classes, 0.5).to(DEVICE)
-optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+criterion = torch.nn.CrossEntropyLoss()
+optimizer = torch.optim.SGD(model.parameters(), lr=lr)
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 1.0, gamma=0.1)
 
-def train(model, optimizer, train_iter):
+# %%
+# train & evaluate
+def train(train_iter):
     model.train()
-    for b, batch in enumerate(train_iter):
+    total_acc, total_count = 0, 0
+    log_interval = 50
+    start_time = time.time()
+
+    for idx, batch in enumerate(train_iter):
         x, y = batch.text.to(DEVICE), batch.label.to(DEVICE)
-        y.data.sub_(1)  # 레이블 값을 0과 1로 변환
+        y.data.sub_(1)  # 레이블 값을 0부터 시작하도록 변경
         optimizer.zero_grad()
 
         logit = model(x)
-        loss = F.cross_entropy(logit, y)
+        loss = criterion(logit, y)
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 0.1) # gradient exploding 방지
         optimizer.step()
 
-def evaluate(model, val_iter):
+        total_acc += (logit.argmax(1) == y).sum().item()
+        total_count += y.size(0)
+
+        if idx % log_interval == 0 and idx > 0:
+            elapsed = time.time() - start_time
+            # log_interval 사이에 accuracy
+            print('| epoch {:3d} | {:5d}/{:5d} batches '
+                  '| accuracy {:8.3f}'.format(epoch, idx, len(train_iter),
+                                              total_acc/total_count))
+            total_acc, total_count = 0, 0
+            start_time = time.time()
+
+def evaluate(val_iter):
     """evaluate model"""
     model.eval()
-    corrects, total_loss = 0, 0
-    for batch in val_iter:
-        x, y = batch.text.to(DEVICE), batch.label.to(DEVICE)
-        y.data.sub_(1) # 레이블 값을 0과 1로 변환
-        logit = model(x)
-        loss = F.cross_entropy(logit, y, reduction='sum')
-        total_loss += loss.item()
-        corrects += (logit.max(1)[1].view(y.size()).data == y.data).sum()
-    size = len(val_iter.dataset) # validation data 전체 개수
-    avg_loss = total_loss / size
-    avg_accuracy = 100.0 * corrects / size
-    return avg_loss, avg_accuracy
+    total_acc, total_count = 0, 0
+
+    with torch.no_grad():
+        for batch in val_iter:
+            x, y = batch.text.to(DEVICE), batch.label.to(DEVICE)
+            y.data.sub_(1)
+
+            logit = model(x)
+
+            total_acc += (logit.argmax(1)== y).sum().item()
+            total_count += y.size(0)
+
+    return total_acc / total_count
     
-# train, evaluate
+
 best_val_acc = None
-for e in range(1, EPOCHS+1):
-    train(model, optimizer, train_iter)
-    val_loss, val_accuracy = evaluate(model, val_iter)
+for epoch in range(1, EPOCHS+1):
+    epoch_start_time = time.time()
+    train(train_iter)
+    val_acc = evaluate(val_iter)
 
-    print("[Epoch: %d] val loss : %5.2f | val accuracy : %5.2f" % (e, val_loss, val_accuracy))
-
-    # 검증 오차가 가장 적은 최적의 모델을 저장
-    if not best_val_acc or val_accuracy < best_val_acc:
+    if best_val_acc is not None and best_val_acc > val_acc: # accuracy가 업데이트가 안되었을 때
+        scheduler.step()
+    else: # best_val_acc를 가진 최적의 모델을 저장
         if not os.path.isdir("snapshot"):
             os.makedirs("snapshot")
         torch.save(model.state_dict(), './snapshot/GRU_lab1.pt')
-        best_val_acc = val_accuracy
+        best_val_acc = val_acc
 
+    print('-' * 59)
+    print('| end of epoch {:3d} | time: {:5.2f}s | '
+          'valid accuracy {:8.3f} '.format(epoch,
+                                           time.time() - epoch_start_time,
+                                           val_acc))
+    print('-' * 59)
+
+# torch.save(model.state_dict(), './snapshot/GRU_lab1.pt')
+print('best validation accuracy',  best_val_acc)
 # %%
-reverse_dict = dict(map(reversed, LABEL.vocab.stoi.items()))
-def generator(model, val_iter):
+def generator(val_iter):
     """testset output generator"""
     model.eval()
     output = []
-    for batch in val_iter:
-        x = batch.text.to(DEVICE)
-        logit = model(x)
-        output.extend(logit.max(1)[1])
+    with torch.no_grad():
+        for batch in val_iter:
+            x = batch.text.to(DEVICE)
+            logit = model(x)
+            output.extend(logit.argmax(1))
 
     return output
 
 model.load_state_dict(torch.load('./snapshot/GRU_lab1.pt',  map_location=DEVICE))
-output = generator(model, test_iter)
 
+reverse_dict = dict(map(reversed, LABEL.vocab.stoi.items()))
+output = generator(test_iter)
 for i in range(len(output)):
     output[i] = reverse_dict[int(output[i])] 
 
 submission = pd.read_csv('./data/submission_example.csv')
-
 result_df = pd.DataFrame(
     {'id': submission['id'],
      'pred': output
     })
-
 result_df.to_csv("data/result_lab1.csv", index=False)

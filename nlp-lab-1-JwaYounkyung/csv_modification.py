@@ -35,7 +35,7 @@ train_df = pd.DataFrame(
     })
 test_df = pd.DataFrame(
     {'Text': test_input,
-     'Label': [0]*len(test_input)
+     'Label': ['D20']*len(test_input)
     })
 
 train_df.to_csv("data/train_lab1.csv", index=False)
