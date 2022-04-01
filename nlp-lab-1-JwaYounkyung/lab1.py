@@ -1,5 +1,6 @@
 import os
 import time
+import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -97,7 +98,7 @@ scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 1.0, gamma=0.1)
 # train & evaluate
 def train(train_iter):
     model.train()
-    total_acc, total_count = 0, 0
+    total_loss, total_acc, total_count = 0, 0, 0
     log_interval = 20
     start_time = time.time()
 
@@ -111,47 +112,53 @@ def train(train_iter):
         torch.nn.utils.clip_grad_norm_(model.parameters(), 0.1) # gradient exploding 방지
         optimizer.step()
 
+        total_loss += int(loss.data)
         total_acc += (logit.argmax(1) == y).sum().item()
         total_count += y.size(0)
 
         if idx % log_interval == 0 and idx > 0:
             elapsed = time.time() - start_time
-            # log_interval 사이에 accuracy
+            # 누적 accuracy
             print('| epoch {:3d} | {:5d}/{:5d} batches '
                   '| accuracy {:8.3f}'.format(epoch, idx, len(train_iter),
                                               total_acc/total_count))
-            total_acc, total_count = 0, 0
             start_time = time.time()
+
+    return total_loss/total_count, total_acc/total_count
 
 def evaluate(val_iter):
     """evaluate model"""
     model.eval()
-    total_acc, total_count = 0, 0
+    total_loss, total_acc, total_count = 0, 0, 0
 
     with torch.no_grad():
         for batch in val_iter:
             x, y = batch.text.to(DEVICE), batch.label.to(DEVICE)
 
             logit = model(x)
+            loss = criterion(logit, y)
 
+            total_loss += int(loss.data)
             total_acc += (logit.argmax(1)== y).sum().item()
             total_count += y.size(0)
 
-    return total_acc / total_count
+    return total_loss/total_count, total_acc/total_count
     
 
 best_val_acc = None
+train_loss_list, train_acc_list = [], []
+val_loss_list, val_acc_list = [], []
 for epoch in range(1, EPOCHS+1):
     epoch_start_time = time.time()
-    train(train_iter)
-    val_acc = evaluate(val_iter)
+    train_loss, train_acc = train(train_iter)
+    val_loss, val_acc = evaluate(val_iter)
 
     if best_val_acc is not None and best_val_acc > val_acc: # accuracy가 업데이트가 안되었을 때
         pass #scheduler.step()
     else: # best_val_acc를 가진 최적의 모델을 저장
-        if not os.path.isdir("snapshot"):
-            os.makedirs("snapshot")
-        torch.save(model.state_dict(), './snapshot/GRU_lab1.pt')
+        if not os.path.isdir("results"):
+            os.makedirs("results")
+        torch.save(model.state_dict(), './results/GRU_lab1.pt')
         best_val_acc = val_acc
 
     print('-' * 59)
@@ -160,9 +167,27 @@ for epoch in range(1, EPOCHS+1):
                                            time.time() - epoch_start_time,
                                            val_acc))
     print('-' * 59)
+    train_loss_list.append(train_loss)
+    train_acc_list.append(train_acc)
+    val_loss_list.append(val_loss)
+    val_acc_list.append(val_acc)
 
 # torch.save(model.state_dict(), './snapshot/GRU_lab1.pt')
 print('best validation accuracy',  best_val_acc)
+
+# %% 
+# Graph
+def graph(train_list, val_list, fgname):
+    plt.plot(train_list, label='train')
+    plt.plot(val_list, label='validation')
+    plt.legend()
+    plt.savefig('./results/'+ fgname + '.png', dpi=300)
+    plt.clf()
+
+
+graph(train_loss_list, val_loss_list, 'loss')
+graph(train_acc_list, val_acc_list, 'acc')
+
 # %%
 def generator(test_iter):
     """testset output generator"""
@@ -177,7 +202,7 @@ def generator(test_iter):
 
     return output
 
-model.load_state_dict(torch.load('./snapshot/GRU_lab1.pt',  map_location=DEVICE))
+model.load_state_dict(torch.load('./results/GRU_lab1.pt',  map_location=DEVICE))
 
 reverse_dict = dict(map(reversed, LABEL.vocab.stoi.items()))
 output = generator(test_iter)
