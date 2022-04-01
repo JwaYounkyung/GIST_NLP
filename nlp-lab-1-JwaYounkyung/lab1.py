@@ -15,8 +15,8 @@ torch.manual_seed(SEED)
 
 # hyper-parameter
 BATCH_SIZE = 16
-lr = 5
-EPOCHS = 200
+lr = 0.1
+EPOCHS = 300
 
 USE_CUDA = torch.cuda.is_available()
 DEVICE = torch.device("cuda" if USE_CUDA else "cpu")
@@ -52,6 +52,7 @@ print(vars(valset[0]))
 train_iter, val_iter, test_iter = legacy.data.BucketIterator.splits(
         (trainset, valset, testset), batch_size=BATCH_SIZE,
         shuffle=True, repeat=False, sort=False)
+val_iter.shuffle = False
 test_iter.shuffle = False
 
 print('train 데이터의 미니 배치의 개수 : {}'.format(len(train_iter))) # 180*4
@@ -65,10 +66,11 @@ class TextClassificationModel(nn.Module):
     def __init__(self, vocab_size, embed_dim, num_class):
         super(TextClassificationModel, self).__init__()
         self.embedding = nn.EmbeddingBag(vocab_size, embed_dim, sparse=True)
-        self.fc1 = nn.Linear(embed_dim, 32)
+        self.fc1 = nn.Linear(embed_dim, 128)
         self.dropout1 = nn.Dropout(0.4)
-        self.fc2 = nn.Linear(32, num_class)
-        # self.batchnorm = 
+        self.fc2 = nn.Linear(128, num_class)
+        self.bn1 = nn.BatchNorm1d(embed_dim)
+        self.bn2 = nn.BatchNorm1d(128)
         self.init_weights()
 
     def init_weights(self):
@@ -80,19 +82,18 @@ class TextClassificationModel(nn.Module):
         self.fc2.bias.data.zero_()
 
     def forward(self, x):
-        x = self.embedding(x)
-        # x = F.softmax(self.fc1(x))
-        x = self.fc1(x)
+        x = F.relu(self.bn1(self.embedding(x)))
+        x = F.relu(self.bn2(self.fc1(x)))
         x = self.dropout1(x)
         x = self.fc2(x)
         return x
 
-emsize = 64
+emsize = 1024
 model = TextClassificationModel(vocab_size, emsize, n_classes).to(DEVICE)
 
 criterion = torch.nn.CrossEntropyLoss()
 optimizer = torch.optim.SGD(model.parameters(), lr=lr)
-scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 1.0, gamma=0.1)
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 1.0, gamma=0.999)
 
 # %%
 # train & evaluate
@@ -109,7 +110,7 @@ def train(train_iter):
         logit = model(x)
         loss = criterion(logit, y)
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 0.1) # gradient exploding 방지
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5) # gradient exploding 방지
         optimizer.step()
 
         total_loss += int(loss.data)
@@ -129,6 +130,7 @@ def train(train_iter):
 def evaluate(val_iter):
     """evaluate model"""
     model.eval()
+    criterion.eval()
     total_loss, total_acc, total_count = 0, 0, 0
 
     with torch.no_grad():
@@ -154,7 +156,7 @@ for epoch in range(1, EPOCHS+1):
     val_loss, val_acc = evaluate(val_iter)
 
     if best_val_acc is not None and best_val_acc > val_acc: # accuracy가 업데이트가 안되었을 때
-        pass #scheduler.step()
+        scheduler.step()
     else: # best_val_acc를 가진 최적의 모델을 저장
         if not os.path.isdir("results"):
             os.makedirs("results")
