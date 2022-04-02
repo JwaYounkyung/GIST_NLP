@@ -163,6 +163,7 @@ for epoch in range(1, EPOCHS+1):
 
 # torch.save(model.state_dict(), './snapshot/GRU_lab1.pt')
 print('best validation accuracy',  best_val_acc)
+
 # %%
 def generator(test_iter):
     """testset output generator"""

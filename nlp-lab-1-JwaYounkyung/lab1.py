@@ -26,7 +26,7 @@ TEXT = legacy.data.Field(sequential=True, batch_first=True, fix_length=20)
 LABEL = legacy.data.Field(sequential=False, batch_first=True)
 
 trainset, testset = legacy.data.TabularDataset.splits(
-        path='data', train='train_lab1.csv', test='test_lab1.csv', format='csv',
+        path='data', train='train_lab1_EDA.csv', test='test_lab1.csv', format='csv',
         fields=[('text', TEXT), ('label', LABEL)], skip_header=True)
 
 print('trainset의 구성 요소 출력 : ', trainset.fields)
@@ -55,9 +55,9 @@ train_iter, val_iter, test_iter = legacy.data.BucketIterator.splits(
 val_iter.shuffle = False
 test_iter.shuffle = False
 
-print('train 데이터의 미니 배치의 개수 : {}'.format(len(train_iter))) # 180*4
-print('validate 데이터의 미니 배치의 개수 : {}'.format(len(val_iter))) # 45*4
-print('test 데이터의 미니 배치의 개수 : {}'.format(len(test_iter))) # 25*4
+print('train 데이터의 미니 배치의 개수 : {}'.format(len(train_iter))) 
+print('validate 데이터의 미니 배치의 개수 : {}'.format(len(val_iter)))
+print('test 데이터의 미니 배치의 개수 : {}'.format(len(test_iter))) 
 
 # %%
 # Model
@@ -66,8 +66,9 @@ class TextClassificationModel(nn.Module):
     def __init__(self, vocab_size, embed_dim, num_class):
         super(TextClassificationModel, self).__init__()
         self.embedding = nn.EmbeddingBag(vocab_size, embed_dim, sparse=True)
-        self.fc1 = nn.Linear(embed_dim, 128)
         self.dropout1 = nn.Dropout(0.4)
+        self.fc1 = nn.Linear(embed_dim, 128)
+        self.dropout2 = nn.Dropout(0.4)
         self.fc2 = nn.Linear(128, num_class)
         self.bn1 = nn.BatchNorm1d(embed_dim)
         self.bn2 = nn.BatchNorm1d(128)
@@ -83,8 +84,9 @@ class TextClassificationModel(nn.Module):
 
     def forward(self, x):
         x = F.relu(self.bn1(self.embedding(x)))
-        x = F.relu(self.bn2(self.fc1(x)))
         x = self.dropout1(x)
+        x = F.relu(self.bn2(self.fc1(x)))
+        x = self.dropout2(x)
         x = self.fc2(x)
         return x
 
@@ -157,10 +159,10 @@ for epoch in range(1, EPOCHS+1):
 
     if best_val_acc is not None and best_val_acc > val_acc: # accuracy가 업데이트가 안되었을 때
         scheduler.step()
-    else: # best_val_acc를 가진 최적의 모델을 저장
+    else: # best_val_acc를 가진 최적의 모델을 저장(같은 값일 때도 update)
         if not os.path.isdir("results"):
             os.makedirs("results")
-        torch.save(model.state_dict(), './results/GRU_lab1.pt')
+        torch.save(model.state_dict(), './results/lab1.pt')
         best_val_acc = val_acc
 
     print('-' * 59)
@@ -194,20 +196,22 @@ graph(train_acc_list, val_acc_list, 'acc')
 def generator(test_iter):
     """testset output generator"""
     model.eval()
+    criterion.eval()
     output = []
 
     with torch.no_grad():
-        for batch in test_iter:
-            x = batch.text.to(DEVICE)
-            logit = model(x)
+        for idx, batch in enumerate(test_iter):
+            x = batch.text.to(DEVICE) # test label은 없어서 y 안불러옴
+            logit = model(x) # Text.vocab update도 이루어짐
             output.extend(logit.argmax(1))
 
     return output
 
-model.load_state_dict(torch.load('./results/GRU_lab1.pt',  map_location=DEVICE))
+model.load_state_dict(torch.load('./results/lab1.pt',  map_location=DEVICE))
 
 reverse_dict = dict(map(reversed, LABEL.vocab.stoi.items()))
 output = generator(test_iter)
+
 for i in range(len(output)):
     output[i] = reverse_dict[int(output[i])] 
 
@@ -216,4 +220,4 @@ result_df = pd.DataFrame(
     {'id': submission['id'],
      'pred': output
     })
-result_df.to_csv("data/result_lab1.csv", index=False)
+result_df.to_csv("results/result_lab1.csv", index=False)
