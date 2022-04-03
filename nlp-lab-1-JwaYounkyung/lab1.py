@@ -16,7 +16,7 @@ torch.manual_seed(SEED)
 # hyper-parameter
 BATCH_SIZE = 16
 lr = 0.1
-EPOCHS = 300
+EPOCHS = 900
 
 USE_CUDA = torch.cuda.is_available()
 DEVICE = torch.device("cuda" if USE_CUDA else "cpu")
@@ -25,9 +25,13 @@ print("cpu와 cuda 중 다음 기기로 학습함:", DEVICE)
 TEXT = legacy.data.Field(sequential=True, batch_first=True, fix_length=20)
 LABEL = legacy.data.Field(sequential=False, batch_first=True)
 
-trainset, testset = legacy.data.TabularDataset.splits(
-        path='data', train='train_lab1_EDA.csv', test='test_lab1.csv', format='csv',
+trainset= legacy.data.TabularDataset(
+        path='data/train_lab1.csv', format='csv',
         fields=[('text', TEXT), ('label', LABEL)], skip_header=True)
+
+testset= legacy.data.TabularDataset(
+        path='data/test_lab1.csv', format='csv',
+        fields=[('text', TEXT)], skip_header=True)
 
 print('trainset의 구성 요소 출력 : ', trainset.fields)
 print('testset의 구성 요소 출력 : ', testset.fields)
@@ -46,17 +50,20 @@ print('클래스의 개수 : {}'.format(n_classes))
 print(LABEL.vocab.stoi)
 
 #데이터 로더 형성
-trainset, valset = trainset.split(split_ratio=0.8)
-print(vars(valset[0]))
+# trainset, valset = trainset.split(split_ratio=1)
+# print(vars(valset[0]))
 
-train_iter, val_iter, test_iter = legacy.data.BucketIterator.splits(
-        (trainset, valset, testset), batch_size=BATCH_SIZE,
-        shuffle=True, repeat=False, sort=False)
-val_iter.shuffle = False
-test_iter.shuffle = False
+train_iter = legacy.data.BucketIterator(
+        dataset=trainset, batch_size=BATCH_SIZE,
+        shuffle=True)
+
+test_iter = legacy.data.BucketIterator(
+        dataset=testset, batch_size=BATCH_SIZE,
+        shuffle=False)
+
 
 print('train 데이터의 미니 배치의 개수 : {}'.format(len(train_iter))) 
-print('validate 데이터의 미니 배치의 개수 : {}'.format(len(val_iter)))
+# print('validate 데이터의 미니 배치의 개수 : {}'.format(len(val_iter)))
 print('test 데이터의 미니 배치의 개수 : {}'.format(len(test_iter))) 
 
 # %%
@@ -90,8 +97,32 @@ class TextClassificationModel(nn.Module):
         x = self.fc2(x)
         return x
 
+class SimpleEmbeddingModle(nn.Module):
+
+    def __init__(self, vocab_size, text_len, num_class):
+        super(SimpleEmbeddingModle, self).__init__()
+        self.embedding = nn.EmbeddingBag(vocab_size, 1000, sparse=True)
+        self.fc2 = nn.Linear(1000, 100)
+        self.fc3 = nn.Linear(100, num_class)
+
+        self.init_weights()
+
+    def init_weights(self):
+        initrange = 0.5
+        self.fc2.weight.data.uniform_(-initrange, initrange)
+        self.fc2.bias.data.zero_()
+        self.fc3.weight.data.uniform_(-initrange, initrange)
+        self.fc3.bias.data.zero_()
+
+    def forward(self, x):
+        x = self.embedding(x)
+        x = self.fc2(x)
+        x = self.fc3(x)
+        return x
+
 emsize = 1024
 model = TextClassificationModel(vocab_size, emsize, n_classes).to(DEVICE)
+# model = SimpleEmbeddingModle(vocab_size, 20, n_classes).to(DEVICE)
 
 criterion = torch.nn.CrossEntropyLoss()
 optimizer = torch.optim.SGD(model.parameters(), lr=lr)
@@ -143,54 +174,54 @@ def evaluate(val_iter):
             loss = criterion(logit, y)
 
             total_loss += int(loss.data)
-            total_acc += (logit.argmax(1)== y).sum().item()
+            total_acc += (logit.argmax(1) == y).sum().item()
             total_count += y.size(0)
 
     return total_loss/total_count, total_acc/total_count
     
 
-best_val_acc = None
+best_train_acc = None
 train_loss_list, train_acc_list = [], []
-val_loss_list, val_acc_list = [], []
+# val_loss_list, val_acc_list = [], []
 for epoch in range(1, EPOCHS+1):
     epoch_start_time = time.time()
     train_loss, train_acc = train(train_iter)
-    val_loss, val_acc = evaluate(val_iter)
-
-    if best_val_acc is not None and best_val_acc > val_acc: # accuracy가 업데이트가 안되었을 때
+    # val_loss, val_acc = evaluate(val_iter)
+    
+    if best_train_acc is not None and best_train_acc > train_acc: # accuracy가 업데이트가 안되었을 때
         scheduler.step()
-    else: # best_val_acc를 가진 최적의 모델을 저장(같은 값일 때도 update)
+    else: # best_train_acc를 가진 최적의 모델을 저장(같은 값일 때도 update)
         if not os.path.isdir("results"):
             os.makedirs("results")
         torch.save(model.state_dict(), './results/lab1.pt')
-        best_val_acc = val_acc
-
+        best_train_acc = train_acc
+    
     print('-' * 59)
     print('| end of epoch {:3d} | time: {:5.2f}s | '
-          'valid accuracy {:8.3f} '.format(epoch,
+          'train accuracy {:8.3f} '.format(epoch,
                                            time.time() - epoch_start_time,
-                                           val_acc))
+                                           train_acc))
     print('-' * 59)
     train_loss_list.append(train_loss)
     train_acc_list.append(train_acc)
-    val_loss_list.append(val_loss)
-    val_acc_list.append(val_acc)
+    # val_loss_list.append(val_loss)
+    # val_acc_list.append(val_acc)
 
 # torch.save(model.state_dict(), './snapshot/GRU_lab1.pt')
-print('best validation accuracy',  best_val_acc)
+print('best validation accuracy',  best_train_acc)
 
 # %% 
 # Graph
-def graph(train_list, val_list, fgname):
+def graph(train_list, fgname):
     plt.plot(train_list, label='train')
-    plt.plot(val_list, label='validation')
+    #plt.plot(val_list, label='validation')
     plt.legend()
     plt.savefig('./results/'+ fgname + '.png', dpi=300)
     plt.clf()
 
 
-graph(train_loss_list, val_loss_list, 'loss')
-graph(train_acc_list, val_acc_list, 'acc')
+graph(train_loss_list, 'loss')
+graph(train_acc_list, 'acc')
 
 # %%
 def generator(test_iter):
