@@ -68,14 +68,14 @@ for idx, batch in enumerate(train_iter): # batch는 한번에 끝냄
     
     remove_index = []
     for i, label in enumerate(y):
-        if label == 16 or label == 17 or label == 18:
+        if label == 15 or label == 16 or label == 17 or label == 18:
             remove_index.append(i)
     remove_index.reverse()
     for i in remove_index:
         x = np.delete(x, i, 0)
         y = np.delete(y, i)  
     
-    X_samp, y_samp = SMOTE(random_state=4, k_neighbors=1).fit_resample(x, y)
+    X_samp, y_samp = SMOTE(random_state=4, k_neighbors=2).fit_resample(x, y)
 
 # %%
 # 다시 integer -> str 형식으로 저장
@@ -95,8 +95,8 @@ for i in y_samp:
 
 # %%
 train_df = pd.DataFrame(
-    {'Text': X_str,
-     'Label': y_str
+    {'Text': X_str[:-1], #짝수 되게 하려고
+     'Label': y_str[:-1]
     })
 
 train_df.to_csv("data/train_lab1_Sampled.csv", index=False)
