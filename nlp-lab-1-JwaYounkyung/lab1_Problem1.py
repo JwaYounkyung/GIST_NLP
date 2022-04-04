@@ -26,7 +26,7 @@ TEXT = legacy.data.OneHotField(sequential=True, batch_first=True, fix_length=20)
 LABEL = legacy.data.Field(sequential=False, batch_first=True)
 
 trainset= legacy.data.TabularDataset(
-        path='data/train_lab1.csv', format='csv',
+        path='data/train_lab1_EDA.csv', format='csv',
         fields=[('text', TEXT), ('label', LABEL)], skip_header=True)
 
 testset= legacy.data.TabularDataset(
