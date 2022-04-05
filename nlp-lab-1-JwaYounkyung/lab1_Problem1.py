@@ -26,7 +26,7 @@ TEXT = legacy.data.OneHotField(sequential=True, batch_first=True, fix_length=20)
 LABEL = legacy.data.Field(sequential=False, batch_first=True)
 
 trainset= legacy.data.TabularDataset(
-        path='data/train_lab1_Sampled.csv', format='csv',
+        path='data/train_lab1_Mixed.csv', format='csv',
         fields=[('text', TEXT), ('label', LABEL)], skip_header=True)
 
 testset= legacy.data.TabularDataset(
@@ -68,34 +68,57 @@ print('train 데이터의 미니 배치의 개수 : {}'.format(len(train_iter)))
 print('test 데이터의 미니 배치의 개수 : {}'.format(len(test_iter))) 
 
 # %%
+# Linear
+class myLinear(nn.Module):
+    def __init__(self, in_features, out_features, bias=True):
+        super().__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.bias = bias
+        self.weight = torch.nn.Parameter(torch.Tensor(out_features, in_features))
+        if bias:
+            self.bias = torch.nn.Parameter(torch.Tensor(out_features))
+        else:
+            self.register_parameter('bias', None)
+        self.reset_parameters()
+        
+    def reset_parameters(self):
+        torch.nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        if self.bias is not None:
+            fan_in, _ = torch.nn.init._calculate_fan_in_and_fan_out(self.weight)
+            bound = 1 / math.sqrt(fan_in)
+            torch.nn.init.uniform_(self.bias, -bound, bound)
+        
+    def forward(self, input):
+        x, y = input.shape
+        if y != self.in_features:
+            print(f'Wrong Input Features. Please use tensor with {self.in_features} Input Features')
+            return 0
+        output = input.matmul(self.weight.t())
+        if self.bias is not None:
+            output += self.bias
+        ret = output
+        return ret
+    
+    def extra_repr(self):
+        return 'in_features={}, out_features={}, bias={}'.format(
+            self.in_features, self.out_features, self.bias is not None
+        )
+# %%
 # Model
 class TextClassificationModel(nn.Module):
 
     def __init__(self, vocab_size, text_len, num_class):
         super(TextClassificationModel, self).__init__()
         self.fc1 = nn.Linear(vocab_size*text_len, 1000)
-        self.fc2 = nn.Linear(1000, 100)
-        self.fc3 = nn.Linear(100, num_class)
-
-        self.fc1.weight = nn.Parameter(torch.zeros(1000, vocab_size*text_len))
-        self.fc1.bias = nn.Parameter(torch.zeros(1000))        
-        self.fc2.weight = nn.Parameter(torch.zeros(100, 1000))
-        self.fc2.bias = nn.Parameter(torch.zeros(100))
-        self.fc3.weight = nn.Parameter(torch.zeros(num_class, 100))
-        self.fc3.bias = nn.Parameter(torch.zeros(num_class))
+        self.fc2 = myLinear(1000, 100)
+        self.fc3 = myLinear(100, num_class)
 
         self.dropout1 = nn.Dropout(0.4)
         self.dropout2 = nn.Dropout(0.4)
 
         self.bn1 = nn.BatchNorm1d(1000)
         self.bn2 = nn.BatchNorm1d(100)
-        self.init_weights()
-
-    def init_weights(self):
-        initrange = 0.5
-        self.fc1.weight.data.uniform_(-initrange, initrange)
-        self.fc2.weight.data.uniform_(-initrange, initrange)
-        self.fc3.weight.data.uniform_(-initrange, initrange)
 
     def forward(self, x):
         x = torch.flatten(x, 1)

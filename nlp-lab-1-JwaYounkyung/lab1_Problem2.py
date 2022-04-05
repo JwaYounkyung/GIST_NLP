@@ -1,4 +1,5 @@
 import os
+import math
 import time
 import matplotlib.pyplot as plt
 import torch
@@ -16,7 +17,7 @@ torch.manual_seed(SEED)
 # hyper-parameter
 BATCH_SIZE = 16
 lr = 0.1
-EPOCHS = 900
+EPOCHS = 400
 
 USE_CUDA = torch.cuda.is_available()
 DEVICE = torch.device("cuda" if USE_CUDA else "cpu")
@@ -26,7 +27,7 @@ TEXT = legacy.data.Field(sequential=True, batch_first=True, fix_length=20)
 LABEL = legacy.data.Field(sequential=False, batch_first=True)
 
 trainset= legacy.data.TabularDataset(
-        path='data/train_lab1_Sampled.csv', format='csv',
+        path='data/train_lab1.csv', format='csv',
         fields=[('text', TEXT), ('label', LABEL)], skip_header=True)
 
 testset= legacy.data.TabularDataset(
@@ -67,100 +68,79 @@ print('train 데이터의 미니 배치의 개수 : {}'.format(len(train_iter)))
 print('test 데이터의 미니 배치의 개수 : {}'.format(len(test_iter))) 
 
 # %%
+# Linear
+class myLinear(nn.Module):
+    def __init__(self, in_features, out_features, bias=True):
+        super().__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.bias = bias
+        self.weight = torch.nn.Parameter(torch.Tensor(out_features, in_features))
+        if bias:
+            self.bias = torch.nn.Parameter(torch.Tensor(out_features))
+        else:
+            self.register_parameter('bias', None)
+        self.reset_parameters()
+        
+    def reset_parameters(self):
+        torch.nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        if self.bias is not None:
+            fan_in, _ = torch.nn.init._calculate_fan_in_and_fan_out(self.weight)
+            bound = 1 / math.sqrt(fan_in)
+            torch.nn.init.uniform_(self.bias, -bound, bound)
+        
+    def forward(self, input):
+        x, y = input.shape
+        if y != self.in_features:
+            print(f'Wrong Input Features. Please use tensor with {self.in_features} Input Features')
+            return 0
+        output = input.matmul(self.weight.t())
+        if self.bias is not None:
+            output += self.bias
+        ret = output
+        return ret
+    
+    def extra_repr(self):
+        return 'in_features={}, out_features={}, bias={}'.format(
+            self.in_features, self.out_features, self.bias is not None
+        )
+# %%
 # Model
-class TextClassificationModel(nn.Module):
-
-    def __init__(self, vocab_size, embed_dim, num_class):
-        super(TextClassificationModel, self).__init__()
-        self.embedding = nn.EmbeddingBag(vocab_size, embed_dim, sparse=True)
-        self.dropout1 = nn.Dropout(0.4)
-        self.fc1 = nn.Linear(embed_dim, 128)
-        self.dropout2 = nn.Dropout(0.4)
-        self.fc2 = nn.Linear(128, num_class)
-        self.bn1 = nn.BatchNorm1d(embed_dim)
-        self.bn2 = nn.BatchNorm1d(128)
-        self.init_weights()
-
-    def init_weights(self):
-        initrange = 0.5
-        self.embedding.weight.data.uniform_(-initrange, initrange)
-        self.fc1.weight.data.uniform_(-initrange, initrange)
-        self.fc1.bias.data.zero_()
-        self.fc2.weight.data.uniform_(-initrange, initrange)
-        self.fc2.bias.data.zero_()
-
-    def forward(self, x):
-        x = F.relu(self.bn1(self.embedding(x)))
-        x = self.dropout1(x)
-        x = F.relu(self.bn2(self.fc1(x)))
-        x = self.dropout2(x)
-        x = self.fc2(x)
-        return x
-
 class TextClassificationModel2(nn.Module):
 
     def __init__(self, vocab_size, embed_dim, num_class):
         super(TextClassificationModel2, self).__init__()
-        self.embedding = nn.EmbeddingBag(vocab_size, embed_dim, sparse=True)
-        self.fc1 = nn.Linear(embed_dim, 128)
-        self.fc2 = nn.Linear(128, num_class)
-
+        self.embedding = nn.Embedding(vocab_size, embed_dim)
+        self.fc1 = myLinear(20*embed_dim, 1024)
+        self.fc2 = myLinear(1024, 128)
+        self.fc3 = myLinear(128, num_class)
+        
         self.embedding.weight = nn.Parameter(torch.zeros(vocab_size, embed_dim))
-        self.fc1.weight = nn.Parameter(torch.zeros(128, embed_dim))
-        self.fc1.bias = nn.Parameter(torch.zeros(128))
-        self.fc2.weight = nn.Parameter(torch.zeros(num_class, 128))
-        self.fc2.bias = nn.Parameter(torch.zeros(num_class))
-
+        
         self.dropout1 = nn.Dropout(0.4)
         self.dropout2 = nn.Dropout(0.4)
 
-        self.bn1 = nn.BatchNorm1d(embed_dim)
+        self.bn1 = nn.BatchNorm1d(1024)
         self.bn2 = nn.BatchNorm1d(128)
         self.init_weights()
 
     def init_weights(self):
         initrange = 0.5
         self.embedding.weight.data.uniform_(-initrange, initrange)
-        self.fc1.weight.data.uniform_(-initrange, initrange)
-        #self.fc1.bias.data.zero_()
-        self.fc2.weight.data.uniform_(-initrange, initrange)
-        #self.fc2.bias.data.zero_()
-
-    def forward(self, x):
-        x = F.relu(self.bn1(self.embedding(x)))
-        x = self.dropout1(x)
-        x = F.relu(self.bn2(self.fc1(x)))
-        x = self.dropout2(x)
-        x = self.fc2(x)
-        return x
-
-class SimpleEmbeddingModle(nn.Module):
-
-    def __init__(self, vocab_size, text_len, num_class):
-        super(SimpleEmbeddingModle, self).__init__()
-        self.embedding = nn.EmbeddingBag(vocab_size, 1000, sparse=True)
-        self.fc2 = nn.Linear(1000, 100)
-        self.fc3 = nn.Linear(100, num_class)
-
-        self.init_weights()
-
-    def init_weights(self):
-        initrange = 0.5
-        self.fc2.weight.data.uniform_(-initrange, initrange)
-        self.fc2.bias.data.zero_()
-        self.fc3.weight.data.uniform_(-initrange, initrange)
-        self.fc3.bias.data.zero_()
 
     def forward(self, x):
         x = self.embedding(x)
-        x = self.fc2(x)
+        x = torch.flatten(x,1)
+        x = F.relu(self.bn1(self.fc1(x)))
+        x = self.dropout1(x)
+        x = F.relu(self.bn2(self.fc2(x)))
+        x = self.dropout2(x)
         x = self.fc3(x)
         return x
 
-emsize = 1024
+
+emsize = 256
 model = TextClassificationModel2(vocab_size, emsize, n_classes).to(DEVICE)
-# model = TextClassificationModel(vocab_size, emsize, n_classes).to(DEVICE)
-# model = SimpleEmbeddingModle(vocab_size, 20, n_classes).to(DEVICE)
 
 criterion = torch.nn.CrossEntropyLoss()
 optimizer = torch.optim.SGD(model.parameters(), lr=lr)
