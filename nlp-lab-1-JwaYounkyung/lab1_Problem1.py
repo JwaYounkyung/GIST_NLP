@@ -1,4 +1,5 @@
 import os
+import math
 import time
 import matplotlib.pyplot as plt
 import torch
@@ -26,7 +27,7 @@ TEXT = legacy.data.OneHotField(sequential=True, batch_first=True, fix_length=20)
 LABEL = legacy.data.Field(sequential=False, batch_first=True)
 
 trainset= legacy.data.TabularDataset(
-        path='data/train_lab1_Mixed.csv', format='csv',
+        path='data/train_lab1_Sampled.csv', format='csv',
         fields=[('text', TEXT), ('label', LABEL)], skip_header=True)
 
 testset= legacy.data.TabularDataset(
@@ -75,19 +76,19 @@ class myLinear(nn.Module):
         self.in_features = in_features
         self.out_features = out_features
         self.bias = bias
-        self.weight = torch.nn.Parameter(torch.Tensor(out_features, in_features))
+        self.weight = nn.Parameter(torch.Tensor(out_features, in_features))
         if bias:
-            self.bias = torch.nn.Parameter(torch.Tensor(out_features))
+            self.bias = nn.Parameter(torch.Tensor(out_features))
         else:
             self.register_parameter('bias', None)
         self.reset_parameters()
         
     def reset_parameters(self):
-        torch.nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
         if self.bias is not None:
-            fan_in, _ = torch.nn.init._calculate_fan_in_and_fan_out(self.weight)
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
             bound = 1 / math.sqrt(fan_in)
-            torch.nn.init.uniform_(self.bias, -bound, bound)
+            nn.init.uniform_(self.bias, -bound, bound)
         
     def forward(self, input):
         x, y = input.shape

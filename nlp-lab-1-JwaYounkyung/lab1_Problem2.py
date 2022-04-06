@@ -27,7 +27,7 @@ TEXT = legacy.data.Field(sequential=True, batch_first=True, fix_length=20)
 LABEL = legacy.data.Field(sequential=False, batch_first=True)
 
 trainset= legacy.data.TabularDataset(
-        path='data/train_lab1.csv', format='csv',
+        path='data/train_lab1_Sampled.csv', format='csv',
         fields=[('text', TEXT), ('label', LABEL)], skip_header=True)
 
 testset= legacy.data.TabularDataset(
@@ -75,19 +75,19 @@ class myLinear(nn.Module):
         self.in_features = in_features
         self.out_features = out_features
         self.bias = bias
-        self.weight = torch.nn.Parameter(torch.Tensor(out_features, in_features))
+        self.weight = nn.Parameter(torch.Tensor(out_features, in_features))
         if bias:
-            self.bias = torch.nn.Parameter(torch.Tensor(out_features))
+            self.bias = nn.Parameter(torch.Tensor(out_features))
         else:
             self.register_parameter('bias', None)
         self.reset_parameters()
         
     def reset_parameters(self):
-        torch.nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
         if self.bias is not None:
-            fan_in, _ = torch.nn.init._calculate_fan_in_and_fan_out(self.weight)
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
             bound = 1 / math.sqrt(fan_in)
-            torch.nn.init.uniform_(self.bias, -bound, bound)
+            nn.init.uniform_(self.bias, -bound, bound)
         
     def forward(self, input):
         x, y = input.shape
@@ -105,12 +105,46 @@ class myLinear(nn.Module):
             self.in_features, self.out_features, self.bias is not None
         )
 # %%
+# Embedding
+class myEmbedding(nn.Module):
+    def __init__(self, num_embeddings, embedding_dim, _weight=None):
+        super().__init__()
+        self.num_embeddings = num_embeddings
+        self.embedding_dim = embedding_dim
+
+        if _weight is None:
+            self.weight = nn.Parameter(torch.Tensor(num_embeddings, embedding_dim))
+            self.reset_parameters()
+        else:
+            assert list(_weight.shape) == [num_embeddings, embedding_dim], \
+                'Shape of weight does not match num_embeddings and embedding_dim'
+            self.weight = nn.Parameter(_weight)
+
+    def reset_parameters(self):
+        nn.init.normal_(self.weight)
+
+    def forward(self, input):
+        batch = []
+        for sentence in input:
+            output = []
+            for word in sentence:
+                output.append(self.weight[word,:])
+            batch.append(torch.stack(output))
+        
+        ret = torch.stack(batch)
+        return ret
+
+    def extra_repr(self):
+        s = '{num_embeddings}, {embedding_dim}'
+        return s.format(**self.__dict__)
+
+# %%
 # Model
 class TextClassificationModel2(nn.Module):
 
     def __init__(self, vocab_size, embed_dim, num_class):
         super(TextClassificationModel2, self).__init__()
-        self.embedding = nn.Embedding(vocab_size, embed_dim)
+        self.embedding = myEmbedding(vocab_size, embed_dim)
         self.fc1 = myLinear(20*embed_dim, 1024)
         self.fc2 = myLinear(1024, 128)
         self.fc3 = myLinear(128, num_class)
