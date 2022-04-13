@@ -38,3 +38,7 @@ A repository for the assignment Lab1 in NLP2022.
 |:---:|:---:|:---:|
 |기본|1.0|0.55|
 |Sampled|1.0|0.57|
+
+## 주의사항
+cpu에서 사용을 권장함
+(추후에 필요시 gpu version으로 업데이트 예정)
