@@ -1,3 +1,4 @@
+import enum
 from tkinter.tix import Tree
 from typing import Union, List, Dict
 import random
@@ -9,6 +10,9 @@ from nltk.corpus import wordnet
 from nltk.tokenize import word_tokenize
 from nltk.tag import pos_tag
 from nltk.stem import WordNetLemmatizer
+
+from torch.utils.data import (TensorDataset, DataLoader, RandomSampler,
+                              SequentialSampler)
 
 def set_seed(seed_value=42):
     """Set seed for reproducibility."""
@@ -70,6 +74,64 @@ def lemmatization(tokens, train=True):
 	return lemmas, char2idx
 
 
-def char_onehot(lemmas: List[List[str]]) -> torch.Tensor:
+def one_hot_encoding(char, char2idx):
+	one_hot_vector = [0]*len(char2idx)
+
+	if char2idx.get(char)==None:
+		return one_hot_vector
+		
+	index = char2idx[char]
+	one_hot_vector[index] = 1
+
+	return one_hot_vector
+
+
+def encode(lemmas, char2idx, sent_len, word_len, device):
+	sent_list = []
+	for sent in lemmas:
+		word_list = []
+		for w_idx, word in enumerate(sent):
+			if w_idx >= sent_len:
+				break
+			char_list = []
+			for c_idx, char in enumerate(word):
+				if c_idx >= word_len:
+					break
+				char_list.append(one_hot_encoding(char, char2idx))
+			# word padding
+			while c_idx < (word_len-1):
+				c_idx += 1
+				char_list.append([0]*len(char2idx))
+			
+			word_list.append(char_list)
+		# sentence padding
+		while w_idx < (sent_len-1):
+			w_idx += 1
+			word_list.append([[0]*len(char2idx)]*word_len)
+			
+		sent_list.append(word_list)
 	
-	return v
+	var = torch.tensor(sent_list, dtype=torch.long, device=device)
+
+	return var
+
+def data_loader(train_inputs, test_inputs, train_labels, test_labels, device, batch_size=32):
+    """Convert train and test sets to torch.Tensors and load them to
+    DataLoader.
+    """
+
+    # Convert label data type to torch.Tensor
+    train_labels, test_labels = \
+	tuple(torch.tensor(data, device=device) for data in [train_labels, test_labels])
+
+    # Create DataLoader for training data
+    train_data = TensorDataset(train_inputs, train_labels)
+    train_sampler = RandomSampler(train_data)
+    train_dataloader = DataLoader(train_data, sampler=train_sampler, batch_size=batch_size)
+
+    # Create DataLoader for test data
+    test_data = TensorDataset(test_inputs, test_labels)
+    test_sampler = SequentialSampler(test_data)
+    test_dataloader = DataLoader(test_data, sampler=test_sampler, batch_size=batch_size)
+
+    return train_dataloader, test_dataloader
