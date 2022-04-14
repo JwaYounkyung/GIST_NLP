@@ -56,10 +56,14 @@ class CNN_NLP(nn.Module):
                                                     kernel_size=filter_sizes[i])
                                                     for i in range(len(filter_sizes))
         ])
+        self.norm_list = nn.ModuleList([nn.BatchNorm1d(num_features=num_filters[i]) 
+                                                       for i in range(len(num_filters))
+        ])
+
         self.fc1 = nn.Linear(np.sum(num_filters), 100)
         self.fc2 = nn.Linear(100, num_classes)
-
-        self.dropout = nn.Dropout(p=dropout)
+        self.bn1 = nn.BatchNorm1d(100)
+        self.dropout1 = nn.Dropout(p=dropout)
     
     def forward(self, x):
         # character embedding
@@ -68,12 +72,14 @@ class CNN_NLP(nn.Module):
 
         # CNN
         x = x.permute(0, 2, 1)
-        x = [F.relu(conv1d(x)) for conv1d in self.conv1d_list]
+        x = [conv1d(x) for conv1d in self.conv1d_list]
+        x = [F.relu(self.norm_list[i](x[i])) for i in range(len(x))]
         x = [F.max_pool1d(x_conv, kernel_size=x_conv.shape[2]) for x_conv in x]
         x = torch.cat([x_pool.squeeze(dim=2) for x_pool in x], dim=1)
 
         # fc
-        x = F.relu(self.fc1(x))
+        x = F.relu(self.bn1(self.fc1(x)))
+        x = self.dropout1(x)
         x = F.softmax(self.fc2(x), dim=1)
 
         return x
