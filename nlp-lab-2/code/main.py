@@ -1,18 +1,14 @@
 import utils
+import model
 
+import time
 import numpy as np
-import torch
-from nltk.tokenize import word_tokenize
-from tqdm import tqdm_notebook
-
-from sklearn.model_selection import train_test_split
+import pandas as pd
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-
-import time
 
 utils.set_seed(42)
 
@@ -32,8 +28,10 @@ batch_size = 32
 sent_len = 20
 word_len = 10
 embed_dim = 10
+n_classes = 6
 
 # %%
+print("Preprocessing...")
 # load data
 tr_sents, tr_labels = utils.load_data(filepath='nlp-lab-2/data/sent_class.train.csv')
 ts_sents, ts_labels = utils.load_data(filepath='nlp-lab-2/data/sent_class.test.csv')
@@ -55,75 +53,22 @@ train_dataloader, test_dataloader = \
 utils.data_loader(tr_inputs, ts_inputs, tr_labels, ts_labels, device, batch_size=batch_size)
 
 # %%
-class CNN_NLP(nn.Module):
-    """An 1D Convulational Neural Network for Sentence Classification."""
-    def __init__(self,
-                 vocab_size=None,
-                 embed_dim=300,
-                 filter_sizes=[3, 4, 5],
-                 num_filters=[100, 100, 100],
-                 num_classes=2,
-                 dropout=0.5):
-        """
-        The constructor for CNN_NLP class.
-
-        Args:
-            vocab_size (int): Need to be specified when not pretrained word
-                embeddings are not used.
-            embed_dim (int): Dimension of word vectors. Need to be specified
-                when pretrained word embeddings are not used. Default: 300
-            filter_sizes (List[int]): List of filter sizes. Default: [3, 4, 5]
-            num_filters (List[int]): List of number of filters, has the same
-                length as `filter_sizes`. Default: [100, 100, 100]
-            n_classes (int): Number of classes. Default: 2
-            dropout (float): Dropout rate. Default: 0.5
-        """
-
-        super(CNN_NLP, self).__init__()
-
-        self.embed_dim = embed_dim
-        self.embedding = nn.Embedding(num_embeddings=vocab_size,
-                                        embedding_dim=self.embed_dim,
-                                        padding_idx=0,
-                                        max_norm=5.0)
-        self.conv1d_list = nn.ModuleList([
-            nn.Conv1d(in_channels=self.embed_dim,
-                      out_channels=num_filters[i],
-                      kernel_size=filter_sizes[i])
-            for i in range(len(filter_sizes))
-        ])
-        self.fc = nn.Linear(np.sum(num_filters), num_classes)
-        self.dropout = nn.Dropout(p=dropout)
-
-    def forward(self, input_ids):
-
-        x_embed = self.embedding(input_ids).float()
-        x_reshaped = x_embed.permute(0, 2, 1)
-        x_conv_list = [F.relu(conv1d(x_reshaped)) for conv1d in self.conv1d_list]
-        x_pool_list = [F.max_pool1d(x_conv, kernel_size=x_conv.shape[2])
-            for x_conv in x_conv_list]
-        x_fc = torch.cat([x_pool.squeeze(dim=2) for x_pool in x_pool_list],
-                         dim=1)
-        
-        logits = self.fc(self.dropout(x_fc))
-
-        return logits
-
 loss_fn = nn.CrossEntropyLoss()
-cnn_model = CNN_NLP(vocab_size=len(char2idx),
-                    embed_dim=embed_dim,
-                    filter_sizes=[3, 4, 5],
-                    num_filters=[100, 100, 100],
-                    num_classes=2,
-                    dropout=0.5)
+cnn_model = model.CNN_NLP(vocab_size=len(char2idx),
+                          word_len=word_len,
+                          embed_dim=embed_dim,
+                          filter_sizes=[2, 3, 4],
+                          num_filters=[100, 100, 100],
+                          num_classes=n_classes,
+                          dropout=0.5)
 cnn_model.to(device)
 optimizer = torch.optim.Adam(cnn_model.parameters(), lr=lr)
 
 # %%
-def train(model, optimizer, train_dataloader, epochs=20):
+def train(model, optimizer, train_dataloader, model_root, epochs=20):
     """Train the CNN model."""
 
-    print("Start training...\n")
+    print("Start training...")
     print(f"{'Epoch':^7} | {'Train Loss':^12} | {'Train Acc':^9} | {'Elapsed':^9}")
     print("-"*50)
 
@@ -161,7 +106,7 @@ def train(model, optimizer, train_dataloader, epochs=20):
 
         if train_accuracy > best_accuracy:
             best_accuracy = train_accuracy
-            torch.save(model.state_dict(), 'nlp-lab-2/result/lab2.pt')
+            torch.save(model.state_dict(), model_root)
 
         time_elapsed = time.time() - t0_epoch
         print(f"{epoch_i + 1:^7} | {avg_train_loss:^12.6f} | {train_accuracy:^9.2f} | {time_elapsed:^9.2f}")
@@ -169,30 +114,32 @@ def train(model, optimizer, train_dataloader, epochs=20):
     print("\n")
     print(f"Training complete! Best train accuracy: {best_accuracy:.2f}%.")
 
-train(cnn_model, optimizer, train_dataloader, epochs=epoch)
+train(cnn_model, optimizer, train_dataloader, 'nlp-lab-2/result/lab2.pt', epochs=epoch)
 
 # %%
-def evaluate(model, test_dataloader):
+def test(model, test_dataloader):
     model.eval()
 
-    test_accuracy = []
-    test_loss = []
-
+    test_labels = []
     for batch in test_dataloader:
-        b_input_ids, b_labels = tuple(t.to(device) for t in batch)
-
+        b_input_ids, _ = tuple(t.to(device) for t in batch)
+        
         with torch.no_grad():
             logits = model(b_input_ids)
 
-        loss = loss_fn(logits, b_labels)
-        test_loss.append(loss.item())
-
         preds = torch.argmax(logits, dim=1).flatten()
+        test_labels.append(preds)
 
-        accuracy = (preds == b_labels).cpu().numpy().mean() * 100
-        test_accuracy.append(accuracy)
+    test_labels = torch.cat(test_labels)
+    return test_labels
 
-    test_loss = np.mean(test_loss)
-    test_accuracy = np.mean(test_accuracy)
+cnn_model.load_state_dict(torch.load('nlp-lab-2/result/lab2.pt',  map_location=device))
+test_id = pd.read_csv('nlp-lab-2/data/sent_class.pred.csv')['id']
+test_labels = test(cnn_model, test_dataloader)
 
-    return test_loss, test_accuracy
+result_df = pd.DataFrame(
+    {'id': test_id,
+     'pred': test_labels
+    })
+
+result_df.to_csv("nlp-lab-2/result/lab2.csv", index=False)
