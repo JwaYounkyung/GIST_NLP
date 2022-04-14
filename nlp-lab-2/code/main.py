@@ -22,7 +22,7 @@ else:
 
 # parameter setting
 lr = 0.001
-epoch = 20
+epoch = 40
 batch_size = 32
 
 sent_len = 20
@@ -63,7 +63,7 @@ cnn_model = model.CNN_NLP(vocab_size=len(char2idx),
                           dropout=0.5)
 cnn_model.to(device)
 optimizer = torch.optim.Adam(cnn_model.parameters(), lr=lr)
-
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.9)
 # %%
 def train(model, optimizer, train_dataloader, model_root, epochs=20):
     """Train the CNN model."""
@@ -72,7 +72,7 @@ def train(model, optimizer, train_dataloader, model_root, epochs=20):
     print(f"{'Epoch':^7} | {'Train Loss':^12} | {'Train Acc':^9} | {'Elapsed':^9}")
     print("-"*50)
 
-    best_accuracy = 0
+    best_accuracy = None
     for epoch_i in range(epochs):
         # =======================================
         #               Training
@@ -99,14 +99,17 @@ def train(model, optimizer, train_dataloader, model_root, epochs=20):
             train_accuracy.append(accuracy)
 
             loss.backward()
+            # torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
             optimizer.step()
 
         avg_train_loss = total_loss / len(train_dataloader)
         train_accuracy = np.mean(train_accuracy)
 
-        if train_accuracy > best_accuracy:
-            best_accuracy = train_accuracy
+        if best_accuracy is not None and train_accuracy < best_accuracy:
+            scheduler.step()
+        else:
             torch.save(model.state_dict(), model_root)
+            best_accuracy = train_accuracy
 
         time_elapsed = time.time() - t0_epoch
         print(f"{epoch_i + 1:^7} | {avg_train_loss:^12.6f} | {train_accuracy:^9.2f} | {time_elapsed:^9.2f}")
