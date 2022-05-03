@@ -4,7 +4,6 @@ import torch.nn.functional as F
 
 import numpy as np
 
-
 class CharEmbedding(nn.Module):
     def __init__(self, num_embeddings, embedding_dim, _weight=None):
         super().__init__()
