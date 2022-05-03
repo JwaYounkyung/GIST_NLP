@@ -98,7 +98,7 @@ def embedding(vectors, glove, idx2word, device):
             word_list.append(embedding)
         sent_list.append(word_list)
 
-    var = torch.tensor(sent_list, dtype=torch.long, device=device)
+    var = torch.tensor(sent_list, device=device)
     return var
 
 
