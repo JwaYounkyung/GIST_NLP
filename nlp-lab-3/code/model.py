@@ -127,7 +127,5 @@ class RNN_NLP(nn.Module):
         
     def forward(self, x):
         x = self.rnn(x)
-        #hidden = hidden.permute(1, 0, 2)
-        #hidden = torch.flatten(hidden, 1)
         out = self.fc(x)
         return out
