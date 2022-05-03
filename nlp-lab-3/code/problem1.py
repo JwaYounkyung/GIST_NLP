@@ -67,7 +67,7 @@ utils.data_loader(tr_inputs, ts_inputs, tr_labels, ts_labels, device, batch_size
 # %%
 loss_fn = nn.CrossEntropyLoss()
 
-rnn_model = model.RNN(embed_dim, hidden_dim, n_classes)
+rnn_model = model.RNN_NLP(embed_dim, hidden_dim, n_classes)
 rnn_model.to(device)
 optimizer = torch.optim.Adam(rnn_model.parameters(), lr=lr)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.99)
@@ -130,7 +130,7 @@ def train(model, optimizer, train_dataloader, model_root, epochs=20):
     print(f"Training complete! Best train accuracy: {best_accuracy:.2f}%.")
 
     return train_loss_list, train_acc_list
-'''
+
 train_loss_list, train_acc_list = \
     train(rnn_model, optimizer, train_dataloader, 'nlp-lab-3/result/lab3_problem1.pt', epochs=epoch)
 
@@ -144,7 +144,7 @@ def graph(train_list, fgname):
 
 graph(train_loss_list, 'problem1_train_loss')
 graph(train_acc_list, 'problem1_train_acc')
-'''
+
 # %%
 def test(model, test_dataloader):
     model.eval()
