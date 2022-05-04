@@ -24,12 +24,12 @@ else:
     device = torch.device("cpu")
 
 # parameter setting
-lr = 1e-4
-epoch = 4
+lr = 1e-3
+epoch = 150
 batch_size = 256
 weight_decay = 1e-4
 
-sent_len = 20
+sent_len = 65
 hidden_dim = 512
 embed_dim = 300
 n_classes = 18
@@ -64,7 +64,7 @@ train_dataloader, test_dataloader = \
 utils2.data_loader(tr_inputs, ts_inputs, tr_vec_label, ts_vec_label, device, batch_size=batch_size)
 
 # %%
-loss_fn = nn.CrossEntropyLoss()
+loss_fn = nn.CrossEntropyLoss(ignore_index=0)
 
 lstm_model = model.LSTM_NLP(embed_dim, hidden_dim, n_classes)
 lstm_model.to(device)
@@ -80,7 +80,7 @@ def categorical_accuracy(preds, y, tag_pad_idx=0):
     non_pad_elements = (y != tag_pad_idx).nonzero()
     correct = max_preds[non_pad_elements].squeeze(1).eq(y[non_pad_elements])
 
-    return correct.sum() / torch.FloatTensor([y[non_pad_elements].shape[0]])
+    return correct.sum() / y[non_pad_elements].shape[0]
 
 def train(model, optimizer, train_dataloader, model_root, epochs=20):
     """Train the CNN model."""
@@ -122,7 +122,7 @@ def train(model, optimizer, train_dataloader, model_root, epochs=20):
             optimizer.step()
 
         avg_train_loss = total_loss / len(train_dataloader)
-        train_accuracy = total_acc / len(train_dataloader)
+        train_accuracy = (total_acc / len(train_dataloader))*100
 
         if best_accuracy is not None and train_accuracy < best_accuracy:
             scheduler.step()
@@ -174,7 +174,7 @@ def test(model, test_dataloader, ts_sent_len, sent_len):
         # padded sentence
         if ts_sent_len[step] > sent_len:
             for i in range(sent_len, ts_sent_len[step]):
-                non_pad_preds = torch.cat((non_pad_preds,torch.tensor([0])))
+                non_pad_preds = torch.cat((non_pad_preds,torch.tensor([0], device=device)))
 
         test_labels.append(non_pad_preds)
 
