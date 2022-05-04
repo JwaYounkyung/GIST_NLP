@@ -211,14 +211,17 @@ class BidirRecurrentModel(nn.Module):
 
         # Take only last time step. Modify for seq to seq
         '''
+        # many to one 
         out = outs[-1].squeeze()
         out_rev = outs_rev[0].squeeze()
         out = torch.cat((out, out_rev), 1)
         '''
-        out = torch.stack(outs, dim=1)
-        out_rev = torch.stack(outs_rev, dim=1)
+        # many to many
+        out = torch.stack(outs, dim=1) # stack reverse
+        # out = torch.flip(out, dims=(1,))
+        out_rev = torch.stack(outs_rev, dim=1) 
         out = torch.cat((out, out_rev), dim=2)
-
+        
         # out = self.fc(out)
         return out
         
@@ -238,7 +241,8 @@ class RNN_NLP(nn.Module):
 class Bidir_NLP(nn.Module):
     def __init__(self, embedding_dim, hidden_dim, output_dim):
         super().__init__()
-        self.rnn = BidirRecurrentModel(embedding_dim, hidden_dim, 3, hidden_dim*2)
+        # self.rnn = BidirRecurrentModel(embedding_dim, hidden_dim, 3, hidden_dim*2)
+        self.rnn = nn.RNN(embedding_dim, hidden_dim, num_layers=3, bidirectional=True, batch_first=True)
         self.fc = nn.Linear(hidden_dim*2, output_dim) # hidden_dim * 2
         self.dropout = nn.Dropout(0.5)
         

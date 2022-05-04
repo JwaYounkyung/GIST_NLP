@@ -70,7 +70,7 @@ loss_fn = nn.CrossEntropyLoss(ignore_index=0)
 model = model.Bidir_NLP(embed_dim, hidden_dim, n_classes)
 model.to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.99)
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.9)
 
 # %%
 def categorical_accuracy(preds, y, tag_pad_idx=0):
