@@ -122,35 +122,8 @@ class SimpleRNN(nn.Module):
         return out
 
 
-class RNN_NLP(nn.Module):
-    def __init__(self, embedding_dim, hidden_dim, output_dim):
-        super().__init__()
-        self.rnn = SimpleRNN(embedding_dim, hidden_dim, 3, 3*hidden_dim)
-        self.fc = nn.Linear(hidden_dim*3, output_dim)
-        
-    def forward(self, x):
-        x = self.rnn(x)
-        out = self.fc(x)
-        return out
-
-
-class LSTM_NLP(nn.Module):
-    def __init__(self, embedding_dim, hidden_dim, output_dim):
-        super().__init__()
-        self.lstm = nn.LSTM(embedding_dim, hidden_dim, num_layers=3, bidirectional=False, batch_first=True)
-        self.fc = nn.Linear(hidden_dim, output_dim) # hidden_dim * 2
-        self.dropout = nn.Dropout(0.5)
-        
-    def forward(self, x):
-        #x = x.permute(1, 0, 2)
-        outputs, (hidden, cell) = self.lstm(x)
-        out = self.fc(self.dropout(outputs))
-        # out = out.permute(0, 2, 1)
-        return out
-
-
 class BidirRecurrentModel(nn.Module):
-    def __init__(self, mode, input_size, hidden_size, num_layers, bias, output_size):
+    def __init__(self, input_size, hidden_size, num_layers, output_size, mode='RNN_TANH', bias=True):
         super(BidirRecurrentModel, self).__init__()
         self.mode = mode
         self.input_size = input_size
@@ -161,26 +134,7 @@ class BidirRecurrentModel(nn.Module):
 
         self.rnn_cell_list = nn.ModuleList()
 
-        if mode == 'LSTM':
-
-            self.rnn_cell_list.append(LSTMCell(self.input_size,
-                                              self.hidden_size,
-                                              self.bias))
-            for l in range(1, self.num_layers):
-                self.rnn_cell_list.append(LSTMCell(self.hidden_size,
-                                                    self.hidden_size,
-                                                    self.bias))
-
-        elif mode == 'GRU':
-            self.rnn_cell_list.append(GRUCell(self.input_size,
-                                              self.hidden_size,
-                                              self.bias))
-            for l in range(1, self.num_layers):
-                self.rnn_cell_list.append(GRUCell(self.hidden_size,
-                                                  self.hidden_size,
-                                                  self.bias))
-
-        elif mode == 'RNN_TANH':
+        if mode == 'RNN_TANH':
             self.rnn_cell_list.append(RNNCell(self.input_size,
                                                    self.hidden_size,
                                                    self.bias,
@@ -227,89 +181,68 @@ class BidirRecurrentModel(nn.Module):
 
         hidden_forward = list()
         for layer in range(self.num_layers):
-            if self.mode == 'LSTM':
-                hidden_forward.append((h0[layer, :, :], h0[layer, :, :]))
-            else:
-                hidden_forward.append(h0[layer, :, :])
+            hidden_forward.append(h0[layer, :, :])
 
         hidden_backward = list()
         for layer in range(self.num_layers):
-            if self.mode == 'LSTM':
-                hidden_backward.append((hT[layer, :, :], hT[layer, :, :]))
-            else:
-                hidden_backward.append(hT[layer, :, :])
+            hidden_backward.append(hT[layer, :, :])
 
         for t in range(input.shape[1]):
             for layer in range(self.num_layers):
 
-                if self.mode == 'LSTM':
-                    # If LSTM
-                    if layer == 0:
-                        # Forward net
-                        h_forward_l = self.rnn_cell_list[layer](
-                            input[:, t, :],
-                            (hidden_forward[layer][0], hidden_forward[layer][1])
-                            )
-                        # Backward net
-                        h_back_l = self.rnn_cell_list[layer](
-                            input[:, -(t + 1), :],
-                            (hidden_backward[layer][0], hidden_backward[layer][1])
-                            )
-                    else:
-                        # Forward net
-                        h_forward_l = self.rnn_cell_list[layer](
-                            hidden_forward[layer - 1][0],
-                            (hidden_forward[layer][0], hidden_forward[layer][1])
-                            )
-                        # Backward net
-                        h_back_l = self.rnn_cell_list[layer](
-                            hidden_backward[layer - 1][0],
-                            (hidden_backward[layer][0], hidden_backward[layer][1])
-                            )
-
+                # If RNN{_TANH/_RELU}
+                if layer == 0:
+                    # Forward net
+                    h_forward_l = self.rnn_cell_list[layer](input[:, t, :], hidden_forward[layer])
+                    # Backward net
+                    h_back_l = self.rnn_cell_list[layer](input[:, -(t + 1), :], hidden_backward[layer])
                 else:
-                    # If RNN{_TANH/_RELU} / GRU
-                    if layer == 0:
-                        # Forward net
-                        h_forward_l = self.rnn_cell_list[layer](input[:, t, :], hidden_forward[layer])
-                        # Backward net
-                        h_back_l = self.rnn_cell_list[layer](input[:, -(t + 1), :], hidden_backward[layer])
-                    else:
-                        # Forward net
-                        h_forward_l = self.rnn_cell_list[layer](hidden_forward[layer - 1], hidden_forward[layer])
-                        # Backward net
-                        h_back_l = self.rnn_cell_list[layer](hidden_backward[layer - 1], hidden_backward[layer])
+                    # Forward net
+                    h_forward_l = self.rnn_cell_list[layer](hidden_forward[layer - 1], hidden_forward[layer])
+                    # Backward net
+                    h_back_l = self.rnn_cell_list[layer](hidden_backward[layer - 1], hidden_backward[layer])
 
 
                 hidden_forward[layer] = h_forward_l
                 hidden_backward[layer] = h_back_l
 
-            if self.mode == 'LSTM':
-
-                outs.append(h_forward_l[0])
-                outs_rev.append(h_back_l[0])
-
-            else:
-                outs.append(h_forward_l)
-                outs_rev.append(h_back_l)
+            outs.append(h_forward_l)
+            outs_rev.append(h_back_l)
 
         # Take only last time step. Modify for seq to seq
+        '''
         out = outs[-1].squeeze()
         out_rev = outs_rev[0].squeeze()
         out = torch.cat((out, out_rev), 1)
+        '''
+        out = torch.stack(outs, dim=1)
+        out_rev = torch.stack(outs_rev, dim=1)
+        out = torch.cat((out, out_rev), dim=2)
 
-        out = self.fc(out)
+        # out = self.fc(out)
         return out
         
+
+class RNN_NLP(nn.Module):
+    def __init__(self, embedding_dim, hidden_dim, output_dim):
+        super().__init__()
+        self.rnn = SimpleRNN(embedding_dim, hidden_dim, 3, 3*hidden_dim)
+        self.fc = nn.Linear(hidden_dim*3, output_dim)
+        
+    def forward(self, x):
+        x = self.rnn(x)
+        out = self.fc(x)
+        return out
+
 
 class Bidir_NLP(nn.Module):
     def __init__(self, embedding_dim, hidden_dim, output_dim):
         super().__init__()
-        self.rnn = nn.RNN(embedding_dim, hidden_dim, num_layers=3, bidirectional=True, batch_first=True)
+        self.rnn = BidirRecurrentModel(embedding_dim, hidden_dim, 3, hidden_dim*2)
         self.fc = nn.Linear(hidden_dim*2, output_dim) # hidden_dim * 2
         self.dropout = nn.Dropout(0.5)
         
     def forward(self, x):
-        outputs, hidden = self.rnn(x)
+        outputs = self.rnn(x)
         out = self.fc(self.dropout(outputs))
         return out
