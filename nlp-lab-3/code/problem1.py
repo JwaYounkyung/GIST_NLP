@@ -1,5 +1,5 @@
 # Problem 1 Code
-import utils
+import utils1
 import model
 
 import time
@@ -13,7 +13,7 @@ import torch.optim as optim
 
 import matplotlib.pyplot as plt
 
-utils.set_seed(42)
+utils1.set_seed(42)
 
 if torch.cuda.is_available():       
     device = torch.device("cuda")
@@ -37,32 +37,32 @@ n_classes = 6
 # %%
 print("Preprocessing...")
 # load data
-tr_sents, tr_labels = utils.load_data(filepath='nlp-lab-3/dataset/classification/train_set.csv')
-ts_sents = utils.load_data(filepath='nlp-lab-3/dataset/classification/test_set.csv', train=False)
+tr_sents, tr_labels = utils1.load_data(filepath='nlp-lab-3/dataset/classification/train_set.csv')
+ts_sents = utils1.load_data(filepath='nlp-lab-3/dataset/classification/test_set.csv', train=False)
 ts_labels = pd.DataFrame(np.zeros(len(ts_sents)).astype(int))[0]
 
 # tokenization
-tr_tokens = utils.tokenization(tr_sents)
-ts_tokens = utils.tokenization(ts_sents)
+tr_tokens = utils1.tokenization(tr_sents)
+ts_tokens = utils1.tokenization(ts_sents)
 
 # dictionary generation
-word2idx = utils.dictionary(tr_tokens)
+word2idx = utils1.dictionary(tr_tokens)
 idx2word = {v:k for k, v in word2idx.items()}
 
 # vectorization using pre-padding, pre-sequence truncation
-tr_vec = utils.vectorization(tr_tokens, word2idx, sent_len)
-ts_vec = utils.vectorization(ts_tokens, word2idx, sent_len)
+tr_vec = utils1.vectorization(tr_tokens, word2idx, sent_len)
+ts_vec = utils1.vectorization(ts_tokens, word2idx, sent_len)
 
 # load GloVe
-glove = utils.load_glove(filepath='nlp-lab-3/dataset/classification/glove_word.json')
+glove = utils1.load_pretrained(filepath='nlp-lab-3/dataset/classification/glove_word.json')
 
 # embedding
-tr_inputs = utils.embedding(tr_vec, glove, idx2word, device)
-ts_inputs = utils.embedding(ts_vec, glove, idx2word, device)
+tr_inputs = utils1.embedding(tr_vec, glove, idx2word, device)
+ts_inputs = utils1.embedding(ts_vec, glove, idx2word, device)
 
 # Load data to PyTorch DataLoader
 train_dataloader, test_dataloader = \
-utils.data_loader(tr_inputs, ts_inputs, tr_labels, ts_labels, device, batch_size=batch_size)
+utils1.data_loader(tr_inputs, ts_inputs, tr_labels, ts_labels, device, batch_size=batch_size)
 
 # %%
 loss_fn = nn.CrossEntropyLoss()

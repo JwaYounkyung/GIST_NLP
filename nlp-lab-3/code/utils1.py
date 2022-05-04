@@ -47,8 +47,8 @@ def dictionary(tokens):
     idx = 2
     for sent in tokens:
         for word in sent:
-            if word not in word2idx:
-                word2idx[word] = idx
+            if word.lower() not in word2idx:
+                word2idx[word.lower()] = idx
                 idx += 1
     
     return word2idx
@@ -77,7 +77,7 @@ def vectorization(tokens, word2idx, sent_len):
     
     return sent_list
 
-def load_glove(filepath='YOUR/CSV/FILE/PATH'):
+def load_pretrained(filepath='YOUR/CSV/FILE/PATH'):
     with open(filepath) as f:
         glove = json.load(f)
     

@@ -85,6 +85,7 @@ class SimpleRNN(nn.Module):
         # Input of shape (batch_size, seqence length, input_size)
         # Output of shape (batch_size, output_size)
 
+        # set h0 zero
         if hx is None:
             if torch.cuda.is_available():
                 h0 = Variable(torch.zeros(self.num_layers, input.size(0), self.hidden_size).cuda())
