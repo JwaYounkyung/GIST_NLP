@@ -1,0 +1,21 @@
+1. Show the structure of your codes
+
+nlp-lab3-JwaYounkyung/
+├── code
+│   ├── problem1.py
+│   ├── problem2.py
+│   ├── utils1.py
+│   ├── utils2.py
+│   └── model.py
+├── data
+│   ├── classification
+│   └── pos
+└── result
+
+
+2. Give the example command to reproduce your result
+
+$ python problem1.py
+$ python problem2.py
+
+

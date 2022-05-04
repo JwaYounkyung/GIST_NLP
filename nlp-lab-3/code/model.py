@@ -241,12 +241,13 @@ class RNN_NLP(nn.Module):
 class Bidir_NLP(nn.Module):
     def __init__(self, embedding_dim, hidden_dim, output_dim):
         super().__init__()
-        # self.rnn = BidirRecurrentModel(embedding_dim, hidden_dim, 3, hidden_dim*2)
-        self.rnn = nn.RNN(embedding_dim, hidden_dim, num_layers=3, bidirectional=True, batch_first=True)
+        self.rnn1 = BidirRecurrentModel(embedding_dim, hidden_dim, 3, hidden_dim*2)
+        self.rnn2 = nn.RNN(embedding_dim, hidden_dim, num_layers=3, bidirectional=True, batch_first=True)
         self.fc = nn.Linear(hidden_dim*2, output_dim) # hidden_dim * 2
         self.dropout = nn.Dropout(0.5)
         
     def forward(self, x):
-        outputs = self.rnn(x)
+        outputs = self.rnn1(x)
+        # outputs, hidden = self.rnn2(x)
         out = self.fc(self.dropout(outputs))
         return out
