@@ -1,3 +1,4 @@
+from unicodedata import bidirectional
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -43,6 +44,7 @@ class RNNCell(nn.Module):
             hy = torch.relu(hy)
 
         return hy
+
 
 class SimpleRNN(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers, output_size, bias=True, activation='tanh'):
@@ -119,14 +121,29 @@ class SimpleRNN(nn.Module):
         out = self.fc(out)
         return out
 
+
 class RNN_NLP(nn.Module):
     def __init__(self, embedding_dim, hidden_dim, output_dim):
         super().__init__()
-        self.hidden_dim = hidden_dim
         self.rnn = SimpleRNN(embedding_dim, hidden_dim, 3, 3*hidden_dim)
         self.fc = nn.Linear(hidden_dim*3, output_dim)
         
     def forward(self, x):
         x = self.rnn(x)
         out = self.fc(x)
+        return out
+
+
+class LSTM_NLP(nn.Module):
+    def __init__(self, embedding_dim, hidden_dim, output_dim):
+        super().__init__()
+        self.lstm = nn.LSTM(embedding_dim, hidden_dim, num_layers=3, bidirectional=False, batch_first=True)
+        self.fc = nn.Linear(hidden_dim, output_dim) # hidden_dim * 2
+        self.dropout = nn.Dropout(0.5)
+        
+    def forward(self, x):
+        #x = x.permute(1, 0, 2)
+        outputs, (hidden, cell) = self.lstm(x)
+        out = self.fc(self.dropout(outputs))
+        # out = out.permute(0, 2, 1)
         return out

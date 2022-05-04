@@ -63,13 +63,37 @@ def vectorization(tokens, word2idx, sent_len):
     return sent_list
 
 
-def empty_vectorization(data_len, sent_len):
+def empty_vectorization(ts_sent_len, sent_len):
     sent_list = []
-    word_list = []
-    for i in range(sent_len):
-        word_list.append(0)
         
-    for i in range(data_len):
+    for len in ts_sent_len:
+        word_list = [0 for i in range(sent_len)]
+        for i in range(len):
+            if i >= sent_len:
+                break
+            word_list[i] = 1
         sent_list.append(word_list)
 
     return sent_list
+
+
+def data_loader(train_inputs, test_inputs, train_labels, test_labels, device, batch_size=32):
+    """Convert train and test sets to torch.Tensors and load them to
+    DataLoader.
+    """
+
+    # Convert label data type to torch.Tensor
+    train_labels, test_labels = \
+	tuple(torch.tensor(data, device=device) for data in [train_labels, test_labels])
+
+    # Create DataLoader for training data
+    train_data = TensorDataset(train_inputs, train_labels)
+    train_sampler = RandomSampler(train_data)
+    train_dataloader = DataLoader(train_data, sampler=train_sampler, batch_size=batch_size)
+
+    # Create DataLoader for test data
+    test_data = TensorDataset(test_inputs, test_labels)
+    test_sampler = SequentialSampler(test_data)
+    test_dataloader = DataLoader(test_data, sampler=test_sampler, batch_size=1)
+
+    return train_dataloader, test_dataloader

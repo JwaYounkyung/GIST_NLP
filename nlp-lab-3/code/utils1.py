@@ -85,16 +85,16 @@ def load_pretrained(filepath='YOUR/CSV/FILE/PATH'):
     return glove_lower
 
 
-def embedding(vectors, glove, idx2word, device):
+def embedding(vectors, pretrained, idx2word, device):
     sent_list = []
     for sent in vectors:
         word_list = []
         for idx in sent:
             word = idx2word[idx]
-            if glove.get(word)==None:
-                embedding = glove['[unk]']
+            if pretrained.get(word)==None:
+                embedding = pretrained['[unk]']
             else:
-                embedding = glove[word]
+                embedding = pretrained[word]
             word_list.append(embedding)
         sent_list.append(word_list)
 
