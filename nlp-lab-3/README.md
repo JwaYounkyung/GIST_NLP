@@ -24,3 +24,7 @@ command.txt 참조
 |nn.RNN|0.985|0.649|150|
 |nn.RNN|0.997|0.656|250|
 |nn.RNN + sent_len 65|0.996|0.666|250|
+
+가장 좋은 test acc를 보인 모델은 nn.RNN과 max length of sentence를 max length of test sentence인 65로 설정한 모델이었습니다.
+
+따라서 Rule을 지킨 모델 중 최고 test acc값은 0.544입니다.
