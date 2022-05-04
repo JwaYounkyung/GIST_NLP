@@ -147,3 +147,17 @@ class LSTM_NLP(nn.Module):
         out = self.fc(self.dropout(outputs))
         # out = out.permute(0, 2, 1)
         return out
+
+
+class Bidir_NLP(nn.Module):
+    def __init__(self, embedding_dim, hidden_dim, output_dim):
+        super().__init__()
+        self.rnn = nn.RNN(embedding_dim, hidden_dim, num_layers=3, bidirectional=True, batch_first=True)
+        self.fc = nn.Linear(hidden_dim*2, output_dim) # hidden_dim * 2
+        self.dropout = nn.Dropout(0.5)
+        
+    def forward(self, x):
+        #x = x.permute(1, 0, 2)
+        outputs, hidden = self.rnn(x)
+        out = self.fc(self.dropout(outputs))
+        return out

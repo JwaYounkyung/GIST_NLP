@@ -29,7 +29,7 @@ epoch = 150
 batch_size = 256
 weight_decay = 1e-4
 
-sent_len = 65
+sent_len = 20
 hidden_dim = 512
 embed_dim = 300
 n_classes = 18
@@ -40,6 +40,7 @@ print("Preprocessing...")
 tr_tokens, tr_labels = utils2.load_data(filepath='nlp-lab-3/dataset/pos/train_set.json')
 ts_tokens = utils2.load_data(filepath='nlp-lab-3/dataset/pos/test_set.json', train=False)
 ts_sent_len = [len(sent) for sent in ts_tokens]
+max_sent_len = max(ts_sent_len)
 
 # dictionary generation
 word2idx = utils1.dictionary(tr_tokens)
@@ -48,9 +49,9 @@ dict_label = utils2.load_txt(filepath='nlp-lab-3/dataset/pos/tgt.txt')
 
 # vectorization using post-padding, pre-sequence truncation
 tr_vec = utils2.vectorization(tr_tokens, word2idx, sent_len)
-ts_vec = utils2.vectorization(ts_tokens, word2idx, sent_len)
+ts_vec = utils2.vectorization(ts_tokens, word2idx, max_sent_len)
 tr_vec_label = utils2.vectorization(tr_labels, dict_label, sent_len)
-ts_vec_label = utils2.empty_vectorization(ts_sent_len, sent_len)
+ts_vec_label = utils2.empty_vectorization(ts_sent_len, max_sent_len)
 
 # load Fasttext
 fasttext = utils1.load_pretrained(filepath='nlp-lab-3/dataset/pos/fasttext_word.json')
@@ -66,9 +67,9 @@ utils2.data_loader(tr_inputs, ts_inputs, tr_vec_label, ts_vec_label, device, bat
 # %%
 loss_fn = nn.CrossEntropyLoss(ignore_index=0)
 
-lstm_model = model.LSTM_NLP(embed_dim, hidden_dim, n_classes)
-lstm_model.to(device)
-optimizer = torch.optim.Adam(lstm_model.parameters(), lr=lr)
+model = model.Bidir_NLP(embed_dim, hidden_dim, n_classes)
+model.to(device)
+optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.99)
 
 # %%
@@ -77,6 +78,7 @@ def categorical_accuracy(preds, y, tag_pad_idx=0):
     미니 배치에 대한 정확도 출력, pad가 아닌 것들에 대해서만 정확도 추출
     """
     max_preds = preds.argmax(dim = 1, keepdim = True) # get the index of the max probability
+    # extract non pad word's prediction
     non_pad_elements = (y != tag_pad_idx).nonzero()
     correct = max_preds[non_pad_elements].squeeze(1).eq(y[non_pad_elements])
 
@@ -142,7 +144,7 @@ def train(model, optimizer, train_dataloader, model_root, epochs=20):
     return train_loss_list, train_acc_list
 
 train_loss_list, train_acc_list = \
-    train(lstm_model, optimizer, train_dataloader, 'nlp-lab-3/result/lab3_problem2.pt', epochs=epoch)
+    train(model, optimizer, train_dataloader, 'nlp-lab-3/result/lab3_problem2.pt', epochs=epoch)
 
 # %% 
 # Graph
@@ -168,6 +170,7 @@ def test(model, test_dataloader, ts_sent_len, sent_len):
 
         preds = logits.view(-1, logits.shape[-1])
         max_preds = preds.argmax(dim = 1, keepdim = True)
+        # extract non pad word's prediction
         non_pad_elements = (b_labels.flatten() != 0).nonzero()
         non_pad_preds = max_preds[non_pad_elements].flatten()
 
@@ -181,9 +184,9 @@ def test(model, test_dataloader, ts_sent_len, sent_len):
     test_labels = torch.cat(test_labels)
     return test_labels.cpu()
 
-lstm_model.load_state_dict(torch.load('nlp-lab-3/result/lab3_problem2.pt', map_location=device))
+model.load_state_dict(torch.load('nlp-lab-3/result/lab3_problem2.pt', map_location=device))
 test_id = pd.read_csv('nlp-lab-3/dataset/pos/pos_class.pred.csv')['ID']
-test_labels = test(lstm_model, test_dataloader, ts_sent_len, sent_len)
+test_labels = test(model, test_dataloader, ts_sent_len, max_sent_len)
 
 result_df = pd.DataFrame(
     {'ID': test_id,
