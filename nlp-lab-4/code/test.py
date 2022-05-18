@@ -80,8 +80,9 @@ criterion = nn.NLLLoss(ignore_index=0)
 optimizer_enc = optim.Adam(encoder.parameters(), lr=args.lr)
 optimizer_dec = optim.Adam(decoder.parameters(), lr=args.lr)
 
-best_accuracy = None
-def train(dataloader, epoch):
+best_acc = None
+
+def train(encoder, decoder, dataloader, epoch, model_root):
 	encoder.train()
 	decoder.train()
 	tr_loss = 0.
@@ -90,6 +91,8 @@ def train(dataloader, epoch):
 	cnt = 0
 	total_score = 0.
 	prev_time = time.time()
+
+	global best_acc
 
 	for idx, (src, tgt) in enumerate(dataloader):
 		src, tgt = src.to(device), tgt.to(device)
@@ -165,17 +168,22 @@ def train(dataloader, epoch):
 		batches_left = args.n_epochs * len(dataloader) - batches_done
 		time_left = datetime.timedelta(seconds=batches_left * (time.time() - prev_time))
 		prev_time = time.time()
-		print("\r[epoch {:3d}/{:3d}] [batch {:4d}/{:4d}] loss: {:.6f} (eta: {})".format(
-			epoch, args.n_epochs, idx+1, len(dataloader), loss, time_left), end=' ')
+		print("\r[epoch {:3d}/{:3d}] [batch {:4d}/{:4d}] loss: {:.6f}, accuracy: {:.2f} (eta: {})".format(
+			epoch, args.n_epochs, idx+1, len(dataloader), loss, (correct/cnt)*100, time_left), end=' ')
 
 	tr_loss /= cnt
 	tr_acc = correct / cnt
 	tr_score = total_score / len(dataloader.dataset)
 	
+	if best_acc is None and tr_acc >= best_acc:
+		torch.save(encoder.state_dict(), model_root+'encoder.pt')
+		torch.save(decoder.state_dict(), model_root+'decoder.pt')
+		best_acc = tr_acc 
+
 	return tr_loss, tr_acc, tr_score
 
 
-def test(dataloader, lengths=None):
+def test(encoder, decoder, dataloader, lengths=None):
 	encoder.eval()
 	decoder.eval()
 
@@ -187,6 +195,11 @@ def test(dataloader, lengths=None):
 		for src, _ in dataloader:
 			src = src.to(device)
 
+			h0 = torch.zeros(args.num_layers, args.batch_size, args.hidden_size, requires_grad=False)
+			c0 = torch.zeros(args.num_layers, args.batch_size, args.hidden_size, requires_grad=False)	
+
+			enc_outputs, (h, c) = encoder(src, (h0, c0))
+			# dec_outputs = decoder(tgt, (h, c))
 			"""
 				TO DO: feed the input to Encoder
 
@@ -227,16 +240,21 @@ def test(dataloader, lengths=None):
 
 
 for epoch in range(1, args.n_epochs + 1):
-	tr_loss, tr_acc, tr_score = train(tr_dataloader, epoch)
+	tr_loss, tr_acc, tr_score = train(encoder, decoder, tr_dataloader, epoch, 'nlp-lab-4/result')
 	# {format: (loss, acc, BLEU)}
 	print("tr: ({:.4f}, {:5.2f}, {:5.2f}) | ".format(tr_loss, tr_acc * 100, tr_score * 100), end='')
 
 print("\n[ Elapsed Time: {:.4f} ]".format(time.time() - t_start))
+print("Training complete! Best train accuracy: {:.2f}.".format(best_acc*100))
 
 # for kaggle: by using 'pred_{}.npy' to make your submission file
-with open('../data/de-en/nmt_simple_len.tgt.test.npy', 'rb') as f:
+with open('nlp-lab-4/data/de-en/nmt_simple_len.tgt.test.npy', 'rb') as f:
 	lengths = np.load(f)
-pred = test(ts_dataloader, lengths=lengths)
+
+encoder.load_state_dict(torch.load('nlp-lab-4/result/encoder.pt', map_location=device))
+decoder.load_state_dict(torch.load('nlp-lab-4/result/decoder.pt', map_location=device))
+
+pred = test(encoder, decoder, ts_dataloader, lengths=lengths)
 pred_filepath = Path(args.res_dir) / 'pred_{}.npy'.format(args.res_tag)
 np.save(pred_filepath, np.array(pred))
 
