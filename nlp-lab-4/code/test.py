@@ -124,7 +124,7 @@ def train(model, dataloader, epoch, model_root):
 	tr_loss /= cnt
 	tr_acc = correct / cnt
 	
-	if best_acc is None and tr_acc >= best_acc:
+	if best_acc is None or tr_acc >= best_acc:
 		torch.save(model.state_dict(), model_root)
 		best_acc = tr_acc 
 
@@ -139,7 +139,7 @@ def test(model, dataloader, lengths=None):
 	prev_time = time.time()
 	with torch.no_grad():
 		for src, tgt in dataloader:
-			src = src.to(device), tgt.to(device)
+			src, tgt = src.to(device), tgt.to(device)
 
 			outputs = model(src, tgt)
 
@@ -155,7 +155,7 @@ def test(model, dataloader, lengths=None):
 
 	return total_pred
 
-
+'''
 for epoch in range(1, args.n_epochs + 1):
 	tr_loss, tr_acc = train(model, tr_dataloader, epoch, 'nlp-lab-4/result/model.pt')
 	print("tr: ({:.4f}, {:5.2f} | ".format(tr_loss, tr_acc * 100), end='')
@@ -172,4 +172,4 @@ model.load_state_dict(torch.load('nlp-lab-4/result/model.pt', map_location=devic
 pred = test(model, ts_dataloader, lengths=lengths)
 pred_filepath = Path(args.res_dir) / 'pred_{}.npy'.format(args.res_tag)
 np.save(pred_filepath, np.array(pred))
-'''
+
