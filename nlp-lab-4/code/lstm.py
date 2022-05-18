@@ -48,6 +48,55 @@ class Decoder(nn.Module):
 		return output#, state
 
 
+class Seq2Seq(nn.Module):
+    def __init__(self, encoder, decoder, device):
+        super().__init__()
+
+        self.encoder = encoder
+        self.decoder = decoder
+        self.device = device
+
+        # encoder와 decoder의 hid_dim이 일치하지 않는 경우 에러메세지
+        assert encoder.hid_dim == decoder.hid_dim, \
+            'Hidden dimensions of encoder decoder must be equal'
+        # encoder와 decoder의 hid_dim이 일치하지 않는 경우 에러메세지
+        assert encoder.n_layers == decoder.n_layers, \
+            'Encoder and decoder must have equal number of layers'
+
+    def forward(self, src, trg, teacher_forcing_ratio=0.5):
+        # src: [src len, batch size]
+        # trg: [trg len, batch size]
+        
+        batch_size = trg.shape[1]
+        trg_len = trg.shape[0] # 타겟 토큰 길이 얻기
+        trg_vocab_size = self.decoder.output_dim # context vector의 차원
+
+        # decoder의 output을 저장하기 위한 tensor
+        outputs = torch.zeros(trg_len, batch_size, trg_vocab_size).to(self.device)
+
+        # initial hidden state
+        hidden, cell = self.encoder(src)
+
+        # 첫 번째 입력값 <sos> 토큰
+        input = trg[0,:]
+
+        for t in range(1,trg_len): # <eos> 제외하고 trg_len-1 만큼 반복
+            output, hidden, cell = self.decoder(input, hidden, cell)
+
+            # prediction 저장
+            outputs[t] = output
+
+            # teacher forcing을 사용할지, 말지 결정
+            teacher_force = random.random() < teacher_forcing_ratio
+
+            # 가장 높은 확률을 갖은 값 얻기
+            top1 = output.argmax(1)
+
+            # teacher forcing의 경우에 다음 lstm에 target token 입력
+            input = trg[t] if teacher_force else top1
+
+        return outputs
+
 class AttnDecoder(nn.Module):
 	pass
 

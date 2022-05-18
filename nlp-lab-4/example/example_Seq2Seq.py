@@ -240,7 +240,7 @@ def train(model, iterator, optimizer, criterion, clip):
 
         loss = criterion(output, trg)
         loss.backward()
-
+    
         # 기울기 clip
         torch.nn.utils.clip_grad_norm_(model.parameters(), clip)
 
