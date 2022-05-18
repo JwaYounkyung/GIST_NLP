@@ -69,27 +69,20 @@ if not args.attn:
 else:
 	decoder = lstm.AttnDecoder(len(vocab_tgt), args.hidden_size, num_layers=args.num_layers, max_len=args.max_len)
 
-utils.init_weights(encoder, init_type='uniform')
-utils.init_weights(decoder, init_type='uniform')
-encoder = encoder.to(device)
-decoder = decoder.to(device)
+model = lstm.Seq2Seq(encoder, decoder, device).to(device)
+utils.init_weights(model, init_type='uniform')
 
 """ TO DO: (masking) convert this line for masking [PAD] token """
 criterion = nn.NLLLoss(ignore_index=0)
-
-optimizer_enc = optim.Adam(encoder.parameters(), lr=args.lr)
-optimizer_dec = optim.Adam(decoder.parameters(), lr=args.lr)
+optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
 best_acc = None
-
-def train(encoder, decoder, dataloader, epoch, model_root):
-	encoder.train()
-	decoder.train()
+def train(model, dataloader, epoch, model_root):
+	model.train()
 	tr_loss = 0.
 	correct = 0
 
 	cnt = 0
-	total_score = 0.
 	prev_time = time.time()
 
 	global best_acc
@@ -97,47 +90,20 @@ def train(encoder, decoder, dataloader, epoch, model_root):
 	for idx, (src, tgt) in enumerate(dataloader):
 		src, tgt = src.to(device), tgt.to(device)
 
-		optimizer_enc.zero_grad()
-		optimizer_dec.zero_grad()
-		
-		h0 = torch.zeros(args.num_layers, args.batch_size, args.hidden_size, requires_grad=True)
-		c0 = torch.zeros(args.num_layers, args.batch_size, args.hidden_size, requires_grad=True)
+		optimizer.zero_grad()
+		outputs = model(src, tgt)
 
-		enc_outputs, (h, c) = encoder(src, (h0, c0))
-
-		dec_outputs = decoder(tgt, (h, c))
-
-
-		"""
-			TO DO: feed the context from Encoder to Decoder
-
-			Decoder
-				input: 
-					(h, c)  	<- context from encoder
-					dec_input
-					enc_outputs <- only attention
-				output:
-					dec_outputs
-
-			* teacher forcing, non-autoregressive might be implemented here
-		"""			
-
-		# outputs = torch.stack(dec_outputs, dim=1).squeeze()
-		outputs = dec_outputs
-
-		outputs = outputs.reshape(args.batch_size * args.max_len, -1)
-		tgt = tgt.reshape(-1)
+		# eos 제외하고 loss 계산
+		outputs = outputs[:,1:,:].reshape(args.batch_size * (args.max_len-1), -1)
+		tgt = tgt[:,1:].reshape(-1)
 
 		loss = criterion(outputs, tgt)
 		tr_loss += loss.item()
 		loss.backward()
 
 		""" TO DO: (clipping) convert this line for clipping the 'gradient < args.max_norm' """
-		# torch.nn.utils.clip_grad_norm_(encoder.parameters(), 0.5)
-		# torch.nn.utils.clip_grad_norm_(decoder.parameters(), 0.5)
-
-		optimizer_enc.step()
-		optimizer_dec.step()
+		# torch.nn.utils.clip_grad_norm_(model.parameters(), 1) # 0.5
+		optimizer.step()
 
 		# accuracy
 		pred = outputs.argmax(dim=1, keepdim=True)
@@ -146,22 +112,6 @@ def train(encoder, decoder, dataloader, epoch, model_root):
 		correct += pred_acc.eq(tgt_acc.view_as(pred_acc)).sum().item()
 
 		cnt += tgt_acc.shape[0] # number of non pad 
-
-		# BLEU score
-		score = 0.
-		with torch.no_grad():
-			pred = pred.reshape(args.batch_size, args.max_len, -1).detach().cpu().tolist()
-			tgt = tgt.reshape(args.batch_size, args.max_len).detach().cpu().tolist()
-			for p, t in zip(pred, tgt):
-				eos_idx = t.index(vocab_tgt['[PAD]']) if vocab_tgt['[PAD]'] in t else len(t)
-				p_seq = [i2w_tgt[i[0]] for i in p][:eos_idx]
-				t_seq = [i2w_tgt[i] for i in t][:eos_idx]
-				k = args.k if len(t_seq) > args.k else len(t_seq)
-				s = utils.bleu_score(p_seq, t_seq, k=k)
-				score += s
-				total_score += s
-
-		score /= args.batch_size
 
 		# verbose
 		batches_done = (epoch - 1) * len(dataloader) + idx
@@ -173,60 +123,27 @@ def train(encoder, decoder, dataloader, epoch, model_root):
 
 	tr_loss /= cnt
 	tr_acc = correct / cnt
-	tr_score = total_score / len(dataloader.dataset)
 	
 	if best_acc is None and tr_acc >= best_acc:
-		torch.save(encoder.state_dict(), model_root+'encoder.pt')
-		torch.save(decoder.state_dict(), model_root+'decoder.pt')
+		torch.save(model.state_dict(), model_root)
 		best_acc = tr_acc 
 
-	return tr_loss, tr_acc, tr_score
+	return tr_loss, tr_acc
 
 
-def test(encoder, decoder, dataloader, lengths=None):
-	encoder.eval()
-	decoder.eval()
-
+def test(model, dataloader, lengths=None):
+	model.eval()
 	idx = 0
 	total_pred = []
 
 	prev_time = time.time()
 	with torch.no_grad():
-		for src, _ in dataloader:
-			src = src.to(device)
+		for src, tgt in dataloader:
+			src = src.to(device), tgt.to(device)
 
-			h0 = torch.zeros(args.num_layers, args.batch_size, args.hidden_size, requires_grad=False)
-			c0 = torch.zeros(args.num_layers, args.batch_size, args.hidden_size, requires_grad=False)	
+			outputs = model(src, tgt)
 
-			enc_outputs, (h, c) = encoder(src, (h0, c0))
-			# dec_outputs = decoder(tgt, (h, c))
-			"""
-				TO DO: feed the input to Encoder
-
-				Encoder
-					input: 
-						(h0, c0)  <- init state for encoder
-						src
-					output:
-						enc_outputs
-						(h, c)
-			"""			
-
-			"""
-				TO DO: feed the context from Encoder to Decoder
-
-				Decoder
-					input: 
-						(h, c)  	<- context from encoder
-						dec_input
-						enc_outputs <- only attention
-					output:
-						dec_outputs
-
-				* teacher forcing, non-autoregressive might be implemented here
-			"""			
-
-			outputs = torch.stack(dec_outputs, dim=1).squeeze()
+			outputs = outputs[:,1:,:].reshape(args.batch_size * (args.max_len-1), -1)
 
 			for i in range(outputs.shape[0]):
 				pred = outputs[i].argmax(dim=-1)
@@ -240,21 +157,19 @@ def test(encoder, decoder, dataloader, lengths=None):
 
 
 for epoch in range(1, args.n_epochs + 1):
-	tr_loss, tr_acc, tr_score = train(encoder, decoder, tr_dataloader, epoch, 'nlp-lab-4/result')
-	# {format: (loss, acc, BLEU)}
-	print("tr: ({:.4f}, {:5.2f}, {:5.2f}) | ".format(tr_loss, tr_acc * 100, tr_score * 100), end='')
+	tr_loss, tr_acc = train(model, tr_dataloader, epoch, 'nlp-lab-4/result/model.pt')
+	print("tr: ({:.4f}, {:5.2f} | ".format(tr_loss, tr_acc * 100), end='')
 
 print("\n[ Elapsed Time: {:.4f} ]".format(time.time() - t_start))
 print("Training complete! Best train accuracy: {:.2f}.".format(best_acc*100))
 
+'''
 # for kaggle: by using 'pred_{}.npy' to make your submission file
 with open('nlp-lab-4/data/de-en/nmt_simple_len.tgt.test.npy', 'rb') as f:
 	lengths = np.load(f)
 
-encoder.load_state_dict(torch.load('nlp-lab-4/result/encoder.pt', map_location=device))
-decoder.load_state_dict(torch.load('nlp-lab-4/result/decoder.pt', map_location=device))
-
-pred = test(encoder, decoder, ts_dataloader, lengths=lengths)
+model.load_state_dict(torch.load('nlp-lab-4/result/model.pt', map_location=device))
+pred = test(model, ts_dataloader, lengths=lengths)
 pred_filepath = Path(args.res_dir) / 'pred_{}.npy'.format(args.res_tag)
 np.save(pred_filepath, np.array(pred))
-
+'''

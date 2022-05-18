@@ -49,7 +49,7 @@ class NMTSimpleDataset:
 		if vocab is None:
 			vocab = self.init_vocab(lines)
 
-		seqs = self.convert_sent2seq(lines, vocab=vocab, is_train=is_train)
+		seqs = self.convert_sent2seq(lines, vocab=vocab, is_train=is_train) # 
 		
 		return lines, seqs, vocab
 	
