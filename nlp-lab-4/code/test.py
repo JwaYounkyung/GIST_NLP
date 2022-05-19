@@ -92,13 +92,13 @@ def train(model, dataloader, epoch, model_root):
 		src, tgt = src.to(device), tgt.to(device)
 
 		optimizer.zero_grad()
-		outputs = model(src, tgt)
+		outputs = model(src, tgt, False)
 
 		# eos 제외하고 loss 계산
 		outputs = outputs[:,1:,:].reshape(args.batch_size * (args.max_len-1), -1)
 		tgt = tgt[:,1:].reshape(-1)
 
-		loss = criterion(outputs, tgt, False)
+		loss = criterion(outputs, tgt)
 		tr_loss += loss.item()
 		loss.backward()
 
