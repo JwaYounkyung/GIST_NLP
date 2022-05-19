@@ -103,7 +103,7 @@ def train(model, dataloader, epoch, model_root):
 		loss.backward()
 
 		""" TO DO: (clipping) convert this line for clipping the 'gradient < args.max_norm' """
-		# torch.nn.utils.clip_grad_norm_(model.parameters(), 1) # 0.5
+		torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_norm) # 0.5
 		optimizer.step()
 
 		# accuracy
