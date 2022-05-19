@@ -119,12 +119,13 @@ def train(model, dataloader, epoch, model_root):
 		batches_left = args.n_epochs * len(dataloader) - batches_done
 		time_left = datetime.timedelta(seconds=batches_left * (time.time() - prev_time))
 		prev_time = time.time()
-		print("\r[epoch {:3d}/{:3d}] [batch {:4d}/{:4d}] loss: {:.6f}, accuracy: {:.2f} (eta: {})".format(
-			epoch, args.n_epochs, idx+1, len(dataloader), loss, (correct/cnt)*100, time_left), end=' ')
 
 	tr_loss /= cnt
 	tr_acc = correct / cnt
 	
+	print("[epoch {:3d}/{:3d}] loss: {:.6f}, accuracy: {:.2f}".format(
+		epoch, args.n_epochs, tr_loss, tr_acc*100), end='\n')
+		
 	if best_acc is None or tr_acc >= best_acc:
 		torch.save(model.state_dict(), model_root)
 		best_acc = tr_acc 
@@ -159,7 +160,6 @@ def test(model, dataloader, lengths=None):
 
 for epoch in range(1, args.n_epochs + 1):
 	tr_loss, tr_acc = train(model, tr_dataloader, epoch, 'nlp-lab-4/result/model.pt')
-	print("tr: ({:.4f}, {:5.2f} | ".format(tr_loss, tr_acc * 100), end='')
 
 print("\n[ Elapsed Time: {:.4f} ]".format(time.time() - t_start))
 print("Training complete! Best train accuracy: {:.2f}.".format(best_acc*100))
