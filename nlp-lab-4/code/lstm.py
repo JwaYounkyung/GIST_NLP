@@ -41,7 +41,7 @@ class Decoder(nn.Module):
             nn.LogSoftmax(dim=-1)
         )
 
-    def forward(self, x, state):
+    def forward(self, enc_outputs, x, state):
         """ TO DO: feed the input x to Decoder """
         x = x.unsqueeze(1)
         x = self.embedding(x)
@@ -51,14 +51,51 @@ class Decoder(nn.Module):
         return output, state
 
 
+class AttnDecoder(nn.Module):
+    def __init__(self, vocab_size, hid_dim, max_len, n_layers=4, **kwargs):
+        super(AttnDecoder, self).__init__()
+        self.hid_dim = hid_dim
+        self.n_layers = n_layers
+        self.output_dim = vocab_size
+
+        self.embedding = nn.Embedding(vocab_size, hid_dim)
+        """ TO DO: Implement your LSTM """
+        self.rnn = nn.LSTM(hid_dim, hid_dim, n_layers, batch_first=True)
+
+        self.softmax = nn.Softmax(dim=1)
+
+        self.classifier = nn.Sequential(
+            nn.Linear(hid_dim*2, vocab_size),
+            nn.Tanh(),
+            nn.LogSoftmax(dim=-1)
+        )
+
+    def forward(self, enc_outputs, x, state):
+        """ TO DO: feed the input x to Decoder """
+        x = x.unsqueeze(1)
+        x = self.embedding(x)
+        output, state = self.rnn(x, state)
+        
+        # Attension
+        score = torch.bmm(enc_outputs, torch.transpose(output, 1, 2))
+        dist = self.softmax(score)
+        value = torch.bmm(torch.transpose(dist, 1, 2), enc_outputs)
+        concat = torch.cat([value, output], dim=2)
+
+        output = self.classifier(concat.squeeze())
+
+        return output, state
+
+
 # Seq2Seq
 class Seq2Seq(nn.Module):
-    def __init__(self, encoder, decoder, device):
+    def __init__(self, encoder, decoder, device, Auto=True):
         super().__init__()
 
         self.encoder = encoder
         self.decoder = decoder
         self.device = device
+        self.Auto = Auto
 
         assert encoder.hid_dim == decoder.hid_dim, \
             'Hidden dimensions of encoder decoder must be equal'
@@ -84,29 +121,16 @@ class Seq2Seq(nn.Module):
 
         # Decode
         for t in range(1,trg_len): # <eos> 제외하고 trg_len-1 만큼 반복
-            output, (h, c) = self.decoder(input, (h, c))
+            output, (h, c) = self.decoder(enc_outputs, input, (h, c))
             # prediction 저장
             outputs[:,t] = output
             # 가장 높은 확률을 갖은 값 얻기
             top1 = output.argmax(1)
             # teacher forcing의 경우에 다음 lstm에 target token 입력
-            input = trg[:,t] if teacher_force else top1
+            if self.Auto:
+                input = trg[:,t] if teacher_force else top1
 
         return outputs
-        
-        """
-			TO DO: feed the context from Encoder to Decoder
+        	
 
-			Decoder
-				input: 
-					(h, c)  	<- context from encoder
-					dec_input
-					enc_outputs <- only attention
-				output:
-					dec_outputs
-
-			* teacher forcing, non-autoregressive might be implemented here
-		"""			
-class AttnDecoder(nn.Module):
-    pass
 

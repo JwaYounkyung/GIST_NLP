@@ -32,7 +32,7 @@ parser.add_argument('--lr', type=float, default=0.001)
 # option
 parser.add_argument('--autoregressive', action='store_true', default=False)
 parser.add_argument('--teacher-forcing', action='store_true', default=False)
-parser.add_argument('--attn', action='store_true', default=False)
+parser.add_argument('--attn', action='store_true', default=True)
 # etc
 parser.add_argument('--k', type=int, default=4, help='hyper-paramter for BLEU score')
 
@@ -68,9 +68,9 @@ encoder = lstm.Encoder(len(vocab_src), args.hidden_size, num_layers=args.num_lay
 if not args.attn:
 	decoder = lstm.Decoder(len(vocab_tgt), args.hidden_size, num_layers=args.num_layers)
 else:
-	decoder = lstm.AttnDecoder(len(vocab_tgt), args.hidden_size, num_layers=args.num_layers, max_len=args.max_len)
+	decoder = lstm.AttnDecoder(len(vocab_tgt), args.hidden_size, max_len=args.max_len, num_layers=args.num_layers)
 
-model = lstm.Seq2Seq(encoder, decoder, device).to(device)
+model = lstm.Seq2Seq(encoder, decoder, device, Auto=True).to(device)
 utils.init_weights(model, init_type='uniform')
 
 """ TO DO: (masking) convert this line for masking [PAD] token """
@@ -92,7 +92,7 @@ def train(model, dataloader, epoch, model_root):
 		src, tgt = src.to(device), tgt.to(device)
 
 		optimizer.zero_grad()
-		outputs = model(src, tgt, False)
+		outputs = model(src, tgt, teacher_force=False)
 
 		# eos 제외하고 loss 계산
 		outputs = outputs[:,1:,:].reshape(args.batch_size * (args.max_len-1), -1)
@@ -143,7 +143,7 @@ def test(model, dataloader, lengths=None):
 		for src, tgt in dataloader:
 			src, tgt = src.to(device), tgt.to(device)
 
-			outputs = model(src, tgt, False) # in test teacher forcing off
+			outputs = model(src, tgt, teacher_force=False) # in test teacher forcing off
 
 			outputs = outputs[:,1:,:]
 
