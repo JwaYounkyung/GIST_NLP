@@ -10,6 +10,7 @@ from pathlib import Path
 
 import utils, dataloader, lstm
 
+import pandas as pd
 
 parser = argparse.ArgumentParser(description='NMT - Seq2Seq with Attention')
 """ recommend to use default settings """
@@ -97,7 +98,7 @@ def train(model, dataloader, epoch, model_root):
 		outputs = outputs[:,1:,:].reshape(args.batch_size * (args.max_len-1), -1)
 		tgt = tgt[:,1:].reshape(-1)
 
-		loss = criterion(outputs, tgt)
+		loss = criterion(outputs, tgt, False)
 		tr_loss += loss.item()
 		loss.backward()
 
@@ -141,9 +142,9 @@ def test(model, dataloader, lengths=None):
 		for src, tgt in dataloader:
 			src, tgt = src.to(device), tgt.to(device)
 
-			outputs = model(src, tgt)
+			outputs = model(src, tgt, False) # in test teacher forcing off
 
-			outputs = outputs[:,1:,:].reshape(args.batch_size * (args.max_len-1), -1)
+			outputs = outputs[:,1:,:]
 
 			for i in range(outputs.shape[0]):
 				pred = outputs[i].argmax(dim=-1)
@@ -155,7 +156,7 @@ def test(model, dataloader, lengths=None):
 
 	return total_pred
 
-'''
+
 for epoch in range(1, args.n_epochs + 1):
 	tr_loss, tr_acc = train(model, tr_dataloader, epoch, 'nlp-lab-4/result/model.pt')
 	print("tr: ({:.4f}, {:5.2f} | ".format(tr_loss, tr_acc * 100), end='')
@@ -163,13 +164,17 @@ for epoch in range(1, args.n_epochs + 1):
 print("\n[ Elapsed Time: {:.4f} ]".format(time.time() - t_start))
 print("Training complete! Best train accuracy: {:.2f}.".format(best_acc*100))
 
-'''
+
 # for kaggle: by using 'pred_{}.npy' to make your submission file
 with open('nlp-lab-4/data/de-en/nmt_simple_len.tgt.test.npy', 'rb') as f:
 	lengths = np.load(f)
 
 model.load_state_dict(torch.load('nlp-lab-4/result/model.pt', map_location=device))
 pred = test(model, ts_dataloader, lengths=lengths)
-pred_filepath = Path(args.res_dir) / 'pred_{}.npy'.format(args.res_tag)
-np.save(pred_filepath, np.array(pred))
 
+test_id = ['S'+'{0:05d}'.format(i+1) for i in range(len(pred))]
+result_df = pd.DataFrame(
+    {'id': test_id,
+     'pred': pred
+    })
+result_df.to_csv("nlp-lab-4/result/result.csv", index=False)

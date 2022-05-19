@@ -39,7 +39,7 @@ class NMTSimpleDataset:
 	def load_data(self, filepath, vocab=None, is_train=True):
 		if filepath is None:
 			# lines: empty list, seq: fake labels, vocab: vocab
-			return [], torch.zeros((self.src.shape), dtype=self.src.dtype), vocab
+			return [], torch.ones((self.src.shape), dtype=self.src.dtype)*2, vocab
 
 		lines = []
 		with open(filepath, 'r') as f:
