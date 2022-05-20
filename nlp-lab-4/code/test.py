@@ -64,9 +64,9 @@ i2w_tgt = {v:k for k, v in vocab_tgt.items()}
 tr_dataloader = DataLoader(tr_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True, num_workers=2)
 ts_dataloader = DataLoader(ts_dataset, batch_size=args.batch_size, shuffle=False, drop_last=True, num_workers=2)
 
-encoder = lstm.Encoder(len(vocab_src), args.hidden_size, num_layers=args.num_layers)
+encoder = lstm.Encoder(len(vocab_src), args.hidden_size, args.num_layers)
 if not args.attn:
-	decoder = lstm.Decoder(len(vocab_tgt), args.hidden_size, num_layers=args.num_layers)
+	decoder = lstm.Decoder(len(vocab_tgt), args.hidden_size, args.num_layers)
 else:
 	decoder = lstm.AttnDecoder(len(vocab_tgt), args.hidden_size, max_len=args.max_len, num_layers=args.num_layers)
 
