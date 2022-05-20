@@ -154,13 +154,17 @@ class Encoder(nn.Module):
 
     def forward(self, x):
         """ TO DO: feed the unpacked input x to Encoder """
+        '''
         inputs_length = torch.sum(torch.where(x > 0, True, False), dim=1)
         inputs_length, sorted_idx = inputs_length.sort(0, descending=True)
         x = x[sorted_idx]
         x = self.dropout(self.embedding(x))
-        packed = pack(x, inputs_length, batch_first=True, enforce_sorted=False)
+        packed = pack(x, inputs_length.tolist(), batch_first=True, enforce_sorted=False)
         output, state = self.rnn(packed)
         output, outputs_length = unpack(output, batch_first=True, total_length=x.shape[1])
+        '''
+        x = self.dropout(self.embedding(x))
+        output, state = self.rnn(x)
 
         return output, state
 	
