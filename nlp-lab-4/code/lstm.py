@@ -48,8 +48,8 @@ class LSTM(nn.Module):
             unsorted_indices = None
 
         if hx is None:
-            h0 = torch.zeros(self.num_layers, input.size(0), self.hidden_size, dtype=input.dtype, device=input.device)
-            c0 = torch.zeros(self.num_layers, input.size(0), self.hidden_size, dtype=input.dtype, device=input.device)
+            h0 = torch.zeros(self.num_layers, max_batch_size, self.hidden_size, dtype=input.dtype, device=input.device)
+            c0 = torch.zeros(self.num_layers, max_batch_size, self.hidden_size, dtype=input.dtype, device=input.device)
             hx = (h0, c0)
         else:
             hx = self.permute_hidden(hx, sorted_indices)
@@ -57,32 +57,82 @@ class LSTM(nn.Module):
         outs = []
         hs, cs = [], []
         hidden = []
-        # 모든 layer에 같은 h, c가 들어감
-        for layer in range(self.num_layers):
-            hs.append(hx[0][layer, :, :])
-            cs.append(hx[1][layer, :, :])
+        
+        if batch_sizes != None: # batch_sizes 사용
+            hss, css = [], [] 
+            h_t, c_t = [], []
 
-        for t in range(input.size(1)): # sentence length
+            cur_batch = 0
             for layer in range(self.num_layers):
-                if layer == 0:
-                    h, c = self.rnn_cell_list[layer](
-                        input[:, t, :],
-                        (hs[layer],cs[layer])
-                        )
-                else:
-                    h, c = self.rnn_cell_list[layer](
-                        hs[layer - 1], # input : 전 layer의 h
-                        (hs[layer],cs[layer])
-                        )
-                hs[layer] = h
-                cs[layer] = c
+                hs.append(hx[0][layer, :, :])
+                cs.append(hx[1][layer, :, :])
 
-            outs.append(h) # 마지막 layer의 h
+            for t in range(len(batch_sizes)): # sentence length
+                for layer in range(self.num_layers):
+                    if layer == 0:
+                        h, c = self.rnn_cell_list[layer](
+                            input[cur_batch:cur_batch+batch_sizes[t]],
+                            (hs[layer][:batch_sizes[t]],cs[layer][:batch_sizes[t]])
+                            )
+                    else:
+                        h, c = self.rnn_cell_list[layer](
+                            hs[layer - 1], # input : 전 layer의 h
+                            (hs[layer][:batch_sizes[t]],cs[layer][:batch_sizes[t]])
+                            )
+                
+                    hs[layer] = h
+                    cs[layer] = c
 
-        output = torch.stack(outs, dim=1)
-        hs = torch.stack(hs)
-        cs = torch.stack(cs)
-        hidden = (hs, cs)
+                cur_batch += batch_sizes[t]
+                hss.append(hs[:])
+                css.append(cs[:])
+                outs.append(h) # 마지막 layer의 h
+
+            output = torch.cat(outs)
+
+            # PackedSequence Hidden state 추출
+            for t in range(len(batch_sizes)):
+                for layer in range(self.num_layers):
+                    if t==0:
+                        hs[layer] = hss[-t-1][layer]
+                        cs[layer] = css[-t-1][layer]
+                    else:
+                        hs[layer] = hss[-t-1][layer][batch_sizes[-t]:batch_sizes[-t-1]]
+                        cs[layer] = css[-t-1][layer][batch_sizes[-t]:batch_sizes[-t-1]]
+                
+                h_t.append(torch.stack(hs))
+                c_t.append(torch.stack(cs))
+
+            hs = torch.cat(h_t, dim=1)
+            cs = torch.cat(c_t, dim=1)
+            hidden = (hs, cs)                
+        else:
+            # 모든 layer에 같은 h, c가 들어감
+            for layer in range(self.num_layers):
+                hs.append(hx[0][layer, :, :])
+                cs.append(hx[1][layer, :, :])
+
+            for t in range(input.size(1)): # sentence length
+                for layer in range(self.num_layers):
+                    if layer == 0:
+                        h, c = self.rnn_cell_list[layer](
+                            input[:, t, :],
+                            (hs[layer],cs[layer])
+                            )
+                    else:
+                        h, c = self.rnn_cell_list[layer](
+                            hs[layer - 1], # input : 전 layer의 h
+                            (hs[layer],cs[layer])
+                            )
+                    hs[layer] = h
+                    cs[layer] = c
+
+                outs.append(h) # 마지막 layer의 h
+
+            output = torch.stack(outs, dim=1)
+            hs = torch.stack(hs)
+            cs = torch.stack(cs)
+            hidden = (hs, cs)
 
         if isinstance(orig_input, PackedSequence):
             output_packed = PackedSequence(output, batch_sizes, sorted_indices, unsorted_indices)
@@ -99,14 +149,16 @@ class Encoder(nn.Module):
         
         self.embedding = nn.Embedding(vocab_size, hid_dim)
         self.dropout = nn.Dropout(0.5)
-        self.rnn = nn.LSTM(hid_dim, hid_dim, n_layers, batch_first=True)
-        # self.rnn = LSTM(hid_dim, hid_dim, n_layers)
+        # self.rnn = nn.LSTM(hid_dim, hid_dim, n_layers, batch_first=True)
+        self.rnn = LSTM(hid_dim, hid_dim, n_layers)
 
     def forward(self, x):
         """ TO DO: feed the unpacked input x to Encoder """
         inputs_length = torch.sum(torch.where(x > 0, True, False), dim=1)
+        inputs_length, sorted_idx = inputs_length.sort(0, descending=True)
+        x = x[sorted_idx]
         x = self.dropout(self.embedding(x))
-        packed = pack(x, inputs_length.tolist(), batch_first=True, enforce_sorted=False)
+        packed = pack(x, inputs_length, batch_first=True, enforce_sorted=False)
         output, state = self.rnn(packed)
         output, outputs_length = unpack(output, batch_first=True, total_length=x.shape[1])
 
@@ -147,6 +199,7 @@ class AttnDecoder(nn.Module):
         self.output_dim = vocab_size
 
         self.embedding = nn.Embedding(vocab_size, hid_dim)
+        self.dropout = nn.Dropout(0.5)
         # self.rnn = nn.LSTM(hid_dim, hid_dim, n_layers, batch_first=True)
         self.rnn = LSTM(hid_dim, hid_dim, n_layers)
         self.softmax = nn.Softmax(dim=1)
@@ -158,7 +211,7 @@ class AttnDecoder(nn.Module):
     def forward(self, enc_outputs, x, state):
         """ TO DO: feed the input x to Decoder """
         x = x.unsqueeze(1)
-        x = self.embedding(x)
+        x = self.dropout(self.embedding(x))
         output, state = self.rnn(x, state)
         
         # Attension
