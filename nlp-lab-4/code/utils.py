@@ -35,12 +35,9 @@ def read_pkl(filepath):
 
 
 def padding(tokens, max_len=20, is_train=True):
-	if is_train:
-		w_seq = [tokens[i] if i < len(tokens) else '[PAD]' for i in range(max_len)]
-	else:
-		w_seq = [tokens[i] if i < len(tokens) else '[PAD]' for i in range(max_len-1)]
-		w_seq = ['[EOS]'] + w_seq 
-		# w_seq[len(tokens)-1 if len(tokens) <= max_len else max_len-1] = '[EOS]' # 모든 문장 끝을 EOS로 만듬
+	w_seq = [tokens[i] if i < len(tokens) else '[PAD]' for i in range(max_len)]
+	if not is_train:
+		w_seq[len(tokens)-1 if len(tokens) <= max_len else max_len-1] = '[EOS]' # 모든 문장 끝을 EOS로 만듬
 	
 	return w_seq
 

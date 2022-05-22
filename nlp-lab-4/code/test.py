@@ -30,7 +30,7 @@ parser.add_argument('--n_epochs', type=int, default=100)
 parser.add_argument('--batch-size', type=int, default=128)
 parser.add_argument('--lr', type=float, default=0.001)
 # option
-parser.add_argument('--autoregressive', action='store_true', default=False)
+parser.add_argument('--autoregressive', action='store_true', default=True)
 parser.add_argument('--teacher-forcing', action='store_true', default=False)
 parser.add_argument('--attn', action='store_true', default=True)
 # etc
@@ -70,7 +70,7 @@ if not args.attn:
 else:
 	decoder = lstm.AttnDecoder(len(vocab_tgt), args.hidden_size, max_len=args.max_len, num_layers=args.num_layers)
 
-model = lstm.Seq2Seq(encoder, decoder, device, Auto=True).to(device)
+model = lstm.Seq2Seq(encoder, decoder, device, Auto=args.autoregressive).to(device)
 utils.init_weights(model, init_type='uniform')
 
 """ TO DO: (masking) convert this line for masking [PAD] token """
@@ -92,19 +92,17 @@ def train(model, dataloader, epoch, model_root):
 		src, tgt = src.to(device), tgt.to(device)
 
 		optimizer.zero_grad()
-		outputs = model(src, tgt, teacher_force=False)
+		outputs = model(src, tgt, teacher_force=args.teacher_forcing)
 
-		# eos 제외하고 loss 계산
-
-		outputs = outputs[:,1:,:].reshape(src.shape[0] * (args.max_len-1), -1)
-		tgt = tgt[:,1:].reshape(-1)
+		outputs = outputs.reshape(src.shape[0] * args.max_len, -1)
+		tgt = tgt.reshape(-1)
 
 		loss = criterion(outputs, tgt)
 		tr_loss += loss.item()
 		loss.backward()
 
 		""" TO DO: (clipping) convert this line for clipping the 'gradient < args.max_norm' """
-		torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_norm) # 0.5
+		torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_norm)
 		optimizer.step()
 
 		# accuracy
@@ -145,8 +143,6 @@ def test(model, dataloader, lengths=None):
 			src, tgt = src.to(device), tgt.to(device)
 
 			outputs = model(src, tgt, teacher_force=False) # in test teacher forcing off
-
-			outputs = outputs[:,1:,:]
 
 			for i in range(outputs.shape[0]): # batch size
 				pred = outputs[i].argmax(dim=-1)

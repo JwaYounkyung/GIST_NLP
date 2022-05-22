@@ -149,7 +149,6 @@ class Encoder(nn.Module):
         
         self.embedding = nn.Embedding(vocab_size, hid_dim)
         self.dropout = nn.Dropout(0.5)
-        # self.rnn = nn.LSTM(hid_dim, hid_dim, n_layers, batch_first=True)
         self.rnn = LSTM(hid_dim, hid_dim, n_layers)
 
     def forward(self, x):
@@ -171,7 +170,6 @@ class Decoder(nn.Module):
 
         self.embedding = nn.Embedding(vocab_size, hid_dim)
         self.dropout = nn.Dropout(0.5)
-        # self.rnn = nn.LSTM(hid_dim, hid_dim, n_layers, batch_first=True)
         self.rnn = LSTM(hid_dim, hid_dim, n_layers)
         self.classifier = nn.Sequential(
             nn.Linear(hid_dim, vocab_size),
@@ -197,7 +195,6 @@ class AttnDecoder(nn.Module):
 
         self.embedding = nn.Embedding(vocab_size, hid_dim)
         self.dropout = nn.Dropout(0.5)
-        # self.rnn = nn.LSTM(hid_dim, hid_dim, n_layers, batch_first=True)
         self.rnn = LSTM(hid_dim, hid_dim, n_layers)
         self.softmax = nn.Softmax(dim=1)
         self.classifier = nn.Sequential(
@@ -242,9 +239,6 @@ class Seq2Seq(nn.Module):
         trg_len = trg.shape[1] # 타겟 토큰 길이 얻기
         trg_vocab_size = self.decoder.output_dim # context vector의 차원
 
-        # h0 = torch.zeros(self.encoder.n_layers, batch_size, self.encoder.hid_dim, requires_grad=True)
-        # c0 = torch.zeros(self.encoder.n_layers, batch_size, self.encoder.hid_dim, requires_grad=True)
-
         # decoder의 output을 저장하기 위한 tensor
         outputs = torch.zeros(batch_size, trg_len, trg_vocab_size).to(self.device)
 
@@ -252,10 +246,10 @@ class Seq2Seq(nn.Module):
         enc_outputs, (h, c) = self.encoder(src)
 
         # 첫 번째 입력값 <eos> 토큰
-        input = trg[:,0]
+        input = torch.ones((batch_size), dtype=trg.dtype).to(self.device)*2
 
         # Decode
-        for t in range(1,trg_len): # <eos> 제외하고 trg_len-1 만큼 반복
+        for t in range(trg_len):
             output, (h, c) = self.decoder(enc_outputs, input, (h, c))
             # prediction 저장
             outputs[:,t] = output
