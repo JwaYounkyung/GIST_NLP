@@ -74,7 +74,7 @@ model = lstm.Seq2Seq(encoder, decoder, device, Auto=True).to(device)
 utils.init_weights(model, init_type='uniform')
 
 """ TO DO: (masking) convert this line for masking [PAD] token """
-criterion = nn.NLLLoss(ignore_index=0)
+criterion = nn.CrossEntropyLoss(ignore_index=0)
 optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
 best_acc = None
