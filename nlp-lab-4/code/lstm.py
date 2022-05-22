@@ -149,15 +149,15 @@ class Encoder(nn.Module):
         
         self.embedding = nn.Embedding(vocab_size, hid_dim)
         self.dropout = nn.Dropout(0.5)
-        # self.rnn = nn.LSTM(hid_dim, hid_dim, n_layers, batch_first=True)
-        self.rnn = LSTM(hid_dim, hid_dim, n_layers)
+        self.rnn = nn.LSTM(hid_dim, hid_dim, n_layers, batch_first=True)
+        # self.rnn = LSTM(hid_dim, hid_dim, n_layers)
 
     def forward(self, x):
         """ TO DO: feed the unpacked input x to Encoder """
-        '''
+        
         inputs_length = torch.sum(torch.where(x > 0, True, False), dim=1)
-        inputs_length, sorted_idx = inputs_length.sort(0, descending=True)
-        x = x[sorted_idx]
+        # inputs_length, sorted_idx = inputs_length.sort(0, descending=True)
+        # x = x[sorted_idx]
         x = self.dropout(self.embedding(x))
         packed = pack(x, inputs_length.tolist(), batch_first=True, enforce_sorted=False)
         output, state = self.rnn(packed)
@@ -165,7 +165,7 @@ class Encoder(nn.Module):
         '''
         x = self.dropout(self.embedding(x))
         output, state = self.rnn(x)
-
+        '''
         return output, state
 	
 

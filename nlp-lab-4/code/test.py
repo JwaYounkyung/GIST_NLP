@@ -61,7 +61,7 @@ vocab_tgt = tr_dataset.vocab_tgt
 i2w_src = {v:k for k, v in vocab_src.items()}
 i2w_tgt = {v:k for k, v in vocab_tgt.items()}
 
-tr_dataloader = DataLoader(tr_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True, num_workers=2)
+tr_dataloader = DataLoader(tr_dataset, batch_size=args.batch_size, shuffle=True, drop_last=False, num_workers=2)
 ts_dataloader = DataLoader(ts_dataset, batch_size=args.batch_size, shuffle=False, drop_last=True, num_workers=2)
 
 encoder = lstm.Encoder(len(vocab_src), args.hidden_size, args.num_layers)
@@ -147,7 +147,7 @@ def test(model, dataloader, lengths=None):
 
 			outputs = outputs[:,1:,:]
 
-			for i in range(outputs.shape[0]):
+			for i in range(outputs.shape[0]): # batch size
 				pred = outputs[i].argmax(dim=-1)
 				total_pred.append(pred[:lengths[idx+i]].detach().cpu().numpy())
 
@@ -158,11 +158,11 @@ def test(model, dataloader, lengths=None):
 	return total_pred
 
 
-for epoch in range(1, args.n_epochs + 1):
-	tr_loss, tr_acc = train(model, tr_dataloader, epoch, 'nlp-lab-4/result/model.pt')
+# for epoch in range(1, args.n_epochs + 1):
+# 	tr_loss, tr_acc = train(model, tr_dataloader, epoch, 'nlp-lab-4/result/model.pt')
 
-print("\n[ Elapsed Time: {:.4f} ]".format(time.time() - t_start))
-print("Training complete! Best train accuracy: {:.2f}.".format(best_acc*100))
+# print("\n[ Elapsed Time: {:.4f} ]".format(time.time() - t_start))
+# print("Training complete! Best train accuracy: {:.2f}.".format(best_acc*100))
 
 
 # for kaggle: by using 'pred_{}.npy' to make your submission file
