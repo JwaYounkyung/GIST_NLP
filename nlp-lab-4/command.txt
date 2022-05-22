@@ -1,11 +1,10 @@
 1. Show the structure of your codes
 
-nlp_lab4_hoyongkim_20212036/
+nlp_lab4_JwaYounkyung/
 ├── code
 │   ├── dataloader.py
 │   ├── lstm.py
 │   ├── test.py
-│   ├── train.py
 │   └── utils.py
 ├── command.txt
 ├── data
@@ -21,5 +20,12 @@ nlp_lab4_hoyongkim_20212036/
 
 2. Give the example command to reproduce your result
 
-$ python train.py --num-layers 4 --max-len 20 --hidden-size 512 --n_epochs 100 --batch-size 128 --lr 0.001
+1) Autoregressive + Attension ver.
+$ python test.py --autoregressive True --attn True --teacher-forcing False
+
+2) Autoregressive + Attension + Teacher forcing ver.
+$ python test.py --autoregressive True --attn True --teacher-forcing True
+
+3) Non-Autoregressive ver.
+$ python test.py --autoregressive False --attn False --teacher-forcing False
 
