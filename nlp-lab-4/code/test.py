@@ -15,7 +15,7 @@ import pandas as pd
 parser = argparse.ArgumentParser(description='NMT - Seq2Seq with Attention')
 """ recommend to use default settings """
 # environmental settings
-parser.add_argument('--gpu-id', type=int, default=0)
+parser.add_argument('--gpu-id', type=int, default=1)
 parser.add_argument('--seed-num', type=int, default=0)
 parser.add_argument('--save', action='store_true', default=0)
 parser.add_argument('--res-dir', default='nlp-lab-4/result', type=str)
@@ -74,7 +74,7 @@ model = lstm.Seq2Seq(encoder, decoder, device, Auto=True).to(device)
 utils.init_weights(model, init_type='uniform')
 
 """ TO DO: (masking) convert this line for masking [PAD] token """
-criterion = nn.CrossEntropyLoss(ignore_index=0)
+criterion = nn.NLLLoss(ignore_index=0)
 optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
 best_acc = None
@@ -95,7 +95,8 @@ def train(model, dataloader, epoch, model_root):
 		outputs = model(src, tgt, teacher_force=False)
 
 		# eos 제외하고 loss 계산
-		outputs = outputs[:,1:,:].reshape(args.batch_size * (args.max_len-1), -1)
+
+		outputs = outputs[:,1:,:].reshape(src.shape[0] * (args.max_len-1), -1)
 		tgt = tgt[:,1:].reshape(-1)
 
 		loss = criterion(outputs, tgt)
@@ -158,11 +159,11 @@ def test(model, dataloader, lengths=None):
 	return total_pred
 
 
-# for epoch in range(1, args.n_epochs + 1):
-# 	tr_loss, tr_acc = train(model, tr_dataloader, epoch, 'nlp-lab-4/result/model.pt')
+for epoch in range(1, args.n_epochs + 1):
+	tr_loss, tr_acc = train(model, tr_dataloader, epoch, 'nlp-lab-4/result/model.pt')
 
-# print("\n[ Elapsed Time: {:.4f} ]".format(time.time() - t_start))
-# print("Training complete! Best train accuracy: {:.2f}.".format(best_acc*100))
+print("\n[ Elapsed Time: {:.4f} ]".format(time.time() - t_start))
+print("Training complete! Best train accuracy: {:.2f}.".format(best_acc*100))
 
 
 # for kaggle: by using 'pred_{}.npy' to make your submission file

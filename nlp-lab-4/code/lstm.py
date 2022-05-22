@@ -204,7 +204,7 @@ class AttnDecoder(nn.Module):
         self.softmax = nn.Softmax(dim=1)
         self.classifier = nn.Sequential(
             nn.Linear(hid_dim*2, vocab_size),
-            nn.Softmax(dim=-1)
+            nn.LogSoftmax(dim=-1)
         )
 
     def forward(self, enc_outputs, x, state):
