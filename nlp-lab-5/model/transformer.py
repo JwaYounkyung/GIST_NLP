@@ -10,7 +10,7 @@ from model.sub_layers import Encoder, Decoder
 device = torch.device("cuda" if torch.cuda.is_available() else 'cpu')
 
 class Transformer(nn.Module):
-    def __init__(self, num_token_src, num_token_tgt, max_seq_len, dim_model, n_head=8, dim_hidden=2048, d_prob=0.1, n_enc_layer=6, n_dec_layer=6):
+    def __init__(self, num_token_src, num_token_tgt, src_pad_idx, tgt_pad_idx, max_seq_len, dim_model, n_head=8, dim_hidden=2048, d_prob=0.1, n_enc_layer=6, n_dec_layer=6):
         super(Transformer, self).__init__()
 
         """
@@ -18,15 +18,11 @@ class Transformer(nn.Module):
         """
         self.max_seq_len = max_seq_len
         self.dim_model = dim_model
-        
-        self.src_pad_idx = None
-        self.tgt_pad_idx = None
+
+        self.src_pad_idx = src_pad_idx
+        self.tgt_pad_idx = tgt_pad_idx
 
         self.emb_scale = dim_model ** 0.5
-
-        # self.embed = Embedding_Layer(num_token=num_token, dim_model=dim_model, max_seq_len=max_seq_len, d_prob=d_prob)
-        # self.encoder = Encoder(dim_model, d_k, d_v, n_head, dim_hidden, d_prob, n_enc_layer)
-        # self.decoder = Decoder(dim_model, d_k, d_v, n_head, dim_hidden, d_prob, n_dec_layer)
         
         self.s_vocab_embedding = nn.Embedding(num_token_src, dim_model)
         self.t_vocab_embedding = nn.Embedding(num_token_tgt, dim_model)
@@ -51,40 +47,51 @@ class Transformer(nn.Module):
             nn.LogSoftmax(dim=-1)
         )
 
-    def forward(self, src, tgt):
-        src_mask = None # pad_mask(src, self.src_pad_idx)
+    def forward(self, src, tgt, teacher_force=True):
+        batch_size = tgt.shape[0]
+        t_size = tgt.size()[1]
+        # Encoder
+        src_mask = pad_mask(src, self.src_pad_idx)
         enc_output = self.encode(src, src_mask)
 
-        t_mask = None # pad_mask(tgt, self.tgt_pad_idx)
-        t_size = tgt.size()[1]
-        t_self_mask = None # masked_attn_mask(t_size, tgt.device)
-        output = self.decode(tgt[:,:-1], enc_output, src_mask, t_self_mask, t_mask)
-        output = self.classifier(output)
+        
+        t_mask = pad_mask(tgt, self.tgt_pad_idx)
+        t_self_mask = masked_attn_mask(t_size, tgt.device)
+        tgt_mask = t_mask | t_self_mask
+
+        input = tgt[:,0:1]
+        outputs = torch.zeros(batch_size, t_size, self.dim_model).to(tgt.device)
+
+        # Decoder 
+        for t in range(t_size):
+            output = self.decode(input, enc_output, 
+                                src_mask[:,:,:,t:t+1], tgt_mask[:,:,t:t+1,t:t+1])
+            outputs[:,t:t+1,:] = output
+            top1 = output.argmax(2)
+            input = tgt[:,t:t+1] if teacher_force else top1
+
+        output = self.classifier(outputs)
 
         return output
     
     def encode(self, src, src_mask):
-        # Input embedding
+        # source embedding
         src_embedded = self.s_vocab_embedding(src)
-        # src_embedded.masked_fill_(i_mask.squeeze(1).unsqueeze(-1), 0) # mask 된곳을 0으로
         src_embedded = src_embedded*self.emb_scale + self.get_position_encoding(src)
         src_embedded = self.s_emb_dropout(src_embedded)
 
-        return self.encoder(src_embedded, src_mask)
+        encoder_output = self.encoder(src_embedded, src_mask)
+
+        return encoder_output
     
-    def decode(self, targets, enc_output, src_mask, t_self_mask, t_mask):
+    def decode(self, targets, enc_output, src_mask, tgt_mask):
         # target embedding
         target_embedded = self.t_vocab_embedding(targets)
-        # target_embedded.masked_fill_(t_mask.squeeze(1).unsqueeze(-1), 0)
-
-        # Shifting
-        # target_embedded = target_embedded[:, :-1] # 맨 뒤를 잘라
-        # target_embedded = F.pad(target_embedded, (0, 0, 1, 0))
         target_embedded = target_embedded*self.emb_scale + self.get_position_encoding(targets)
         target_embedded = self.t_emb_dropout(target_embedded)
 
         # decoder
-        decoder_output = self.decoder(target_embedded, enc_output, src_mask, t_self_mask)
+        decoder_output = self.decoder(target_embedded, enc_output, src_mask, tgt_mask)
 
         return decoder_output
 

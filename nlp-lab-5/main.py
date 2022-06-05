@@ -12,6 +12,7 @@ import time, datetime
 import argparse
 import numpy as np
 from pathlib import Path
+import pandas as pd
 
 import utils, dataloader
 from model.transformer import Transformer
@@ -20,22 +21,21 @@ try:
     from torch.utils.tensorboard import SummaryWriter
 except ImportError:
     from tensorboardX import SummaryWriter
-
 device = torch.device("cuda" if torch.cuda.is_available() else 'cpu')
 
 
-def train(dataloader, epochs, model, criterion, optimizer, args, vocab, i2w):
+def train(dataloader, epochs, model, criterion, optimizer, args, model_root):
 
 	"""
 	Todo: Set your optimizer
 	"""
 
 	model.train()
+	tr_loss = 0.
 	correct = 0
 
 	cnt = 0
-	total_score = 0.
-	global_step = 0
+	global best_acc
 	for epoch in range(epochs):
 
 		for idx, (src, tgt) in enumerate(dataloader):
@@ -51,80 +51,68 @@ def train(dataloader, epochs, model, criterion, optimizer, args, vocab, i2w):
 			src, tgt = src.to(device), tgt.to(device)
 
 			optimizer.zero_grad()
-			outputs = model(src, tgt)
+			outputs = model(src, tgt[:,:-1], teacher_force=True)
+
+			outputs = outputs.reshape(src.shape[0] * args.max_len, -1)
+			tgt = tgt.reshape(-1)
 
 			loss = criterion(outputs, tgt)
 			tr_loss += loss.item()
-
 			loss.backward()
+
 			torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_norm)
 			optimizer.step()
-			model.zero_grad()
-			global_step += 1
 
+			# accuracy
 			pred =  outputs.argmax(dim=1, keepdim=True)
 			pred_acc = pred[tgt != 2] # pad가 아닌것만 정확도 추출
 			tgt_acc = tgt[tgt != 2]
 			correct += pred_acc.eq(tgt_acc.view_as(pred_acc)).sum().item()
 
 			cnt += tgt_acc.shape[0]
-			score = 0.
-
-			model.eval()
-			with torch.no_grad():
-				pred = pred.reshape(args.batch_size, args.max_len, -1).detach().cpu().tolist()
-				tgt = tgt.reshape(args.batch_size, args.max_len).detach().cpu().tolist()
-				for p, t in zip(pred, tgt):
-					eos_idx = t.index(vocab['[PAD]']) if vocab['[PAD]'] in t else len(t)
-					p_seq = [i2w[i[0]] for i in p][:eos_idx]
-					t_seq = [i2w[i] for i in t][:eos_idx]
-					k = args.k if len(t_seq) > args.k else len(t_seq)
-					s = utils.bleu_score(p_seq, t_seq, k=k)
-					score += s
-					total_score += s
-
-			score /= args.batch_size
 
 			# verbose
 			batches_done = (epoch - 1) * len(dataloader) + idx
 			batches_left = args.n_epochs * len(dataloader) - batches_done
 			prev_time = time.time()
-			print("\r[epoch {:3d}/{:3d}] [batch {:4d}/{:4d}] loss: {:.6f} acc: {:.4f} BLEU: {:.4f})".format(
-				epoch, args.n_epochs, idx + 1, len(dataloader), loss, correct / cnt, score), end=' ')
 
-	tr_loss /= cnt
-	tr_acc = correct / cnt
-	tr_score = total_score / len(dataloader.dataset) / epochs
+		tr_loss /= cnt
+		tr_acc = correct / cnt
 
-	return tr_loss, tr_acc, tr_score
+		print("[epoch {:3d}/{:3d}] loss: {:.6f} acc: {:.4f})".format(
+			epoch, args.n_epochs, tr_loss, tr_acc*100), end='\n')
 
-def eval(dataloader, model, args, lengths=None):
+		if best_acc is None or tr_acc >= best_acc:
+			torch.save(model.state_dict(), model_root)
+			best_acc = tr_acc 
+
+	return tr_loss, tr_acc
+
+def test(dataloader, model, args, lengths=None):
 	model.eval()
-
 	idx = 0
 	total_pred = []
-	total = 0
+
 	with torch.no_grad():
 		correct = 0.
 		cnt = 0.
 		for src, tgt in dataloader:
 			src, tgt = src.to(device), tgt.to(device)
 
-			"""
-			ToDo: feed the input to model
-			src.size() : [batch, max length]
-			tgt.size() : [batch, max lenght + 1], the first token is always [SOS] token.
+			outputs = model(src, tgt[:,:-1], teacher_force=False) # in test teacher forcing off
 
-			These codes are one of the example to train model, so changing codes are acceptable.
-			If model is run by your code and works well, you will get points.
-			"""
 			for i in range(outputs.shape[0]):
 				"""
 				ToDo: Output (total_pred) is the model predict of test dataset
 				Variable lenghts is the length information of the target length.
 				"""
-	print(total)
+				pred = outputs[i].argmax(dim=-1)
+				total_pred.append(pred[:lengths[idx+i]].detach().cpu().numpy())
+			
+			idx += args.batch_size
+
 	total_pred = np.concatenate(total_pred)
+
 	return total_pred
 
 def main():
@@ -166,6 +154,8 @@ def main():
 	args = parser.parse_args()
 
 	utils.set_random_seed(args)
+	t_start = time.time()
+
 	tr_dataset = dataloader.NMTSimpleDataset(max_len=args.max_len,
 											 src_filepath='nlp-lab-5/data/de-en/nmt_simple.src.train.txt',
 											 tgt_filepath='nlp-lab-5/data/de-en/nmt_simple.tgt.train.txt',
@@ -182,17 +172,19 @@ def main():
 	vocab_tgt = tr_dataset.vocab_tgt
 	i2w_src = {v:k for k, v in vocab_src.items()}
 	i2w_tgt = {v:k for k, v in vocab_tgt.items()}
+	src_pad_idx = vocab_src['[PAD]']
+	tgt_pad_idx = vocab_tgt['[PAD]']
 
-	args.num_token_src = len(vocab_src)
-	args.num_token_tgt = len(vocab_tgt)
+	num_token_src = len(vocab_src)
+	num_token_tgt = len(vocab_tgt)
 
 	tr_dataloader = DataLoader(tr_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True, num_workers=2)
 	ts_dataloader = DataLoader(ts_dataset, batch_size=args.batch_size, shuffle=False, drop_last=False, num_workers=2)
 
-	
-
-	model = Transformer(num_token_src=args.num_token_src,
-						num_token_tgt=args.num_token_tgt,
+	model = Transformer(num_token_src=num_token_src,
+						num_token_tgt=num_token_tgt,
+						src_pad_idx=src_pad_idx,
+						tgt_pad_idx=tgt_pad_idx,
 						max_seq_len=args.max_len,
 						dim_model=args.model_dim,
 						n_head=args.n_head,
@@ -200,22 +192,32 @@ def main():
 						d_prob=args.d_prob,
 						n_enc_layer=args.num_enc_layers,
 						n_dec_layer=args.num_dec_layers)
-
 	model.init_weights()
 	model = model.to(device)
 
-	criterion = nn.NLLLoss(ignore_index=vocab_tgt['[PAD]']) 
+	criterion = nn.NLLLoss(ignore_index=tgt_pad_idx) 
 	optimizer = optim.Adam(model.parameters(), lr=args.lr) # weight decay
 
-	tr_loss, tr_acc, tr_score = train(tr_dataloader, args.n_epochs, model, criterion, optimizer, args, vocab_tgt, i2w_tgt)
-	print("tr: ({:.4f}, {:5.2f}, {:5.2f}) | ".format(tr_loss, tr_acc * 100, tr_score * 100), end='')
+	### Train
+	best_acc = None
+	tr_loss, tr_acc = train(tr_dataloader, args.n_epochs, model, criterion, optimizer, args, 'nlp-lab-5/result/model.pt')
+	
+	print("\n[ Elapsed Time: {:.4f} ]".format(time.time() - t_start))
+	print("Training complete! Best train accuracy: {:.2f}.".format(best_acc*100))
 
-	# for kaggle
-	with open('./data/de-en/length.npy', 'rb') as f:
+	### Test
+	with open('nlp-lab-5/data/de-en/length.npy', 'rb') as f:
 		lengths = np.load(f)
-	pred = eval(ts_dataloader, model=model, args=args, lengths=lengths)
-	pred_filepath = './data/pred_real_test.npy'
-	np.save(pred_filepath, np.array(pred))
+
+	model.load_state_dict(torch.load('nlp-lab-5/result/model.pt', map_location=device))
+	pred = test(ts_dataloader, model=model, args=args, lengths=lengths)
+
+	test_id = ['S'+'{0:05d}'.format(i+1) for i in range(len(pred))]
+	result_df = pd.DataFrame(
+		{'ID': test_id,
+		'label': pred
+		})
+	result_df.to_csv("nlp-lab-5/result/result.csv", index=False)
 
 if __name__ == "__main__":
 	main()

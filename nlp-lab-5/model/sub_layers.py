@@ -59,7 +59,7 @@ class MultiHeadAttention(nn.Module):
         # Scaled Dot-Product Attention.
         # Attention(Q, K, V) = softmax((QK^T)/sqrt(d_k))V
         x = torch.matmul(q, k.transpose(2, 3))  / self.scale # [b, h, q_len, k_len]
-        # x.masked_fill_(mask.unsqueeze(1), -1e9)
+        x.masked_fill_(mask, -1e9) # 매우 작은 음수
         x = torch.softmax(x, dim=3)
         x = torch.matmul(self.att_dropout(x), v) # [b, h, q_len, attn]
 
