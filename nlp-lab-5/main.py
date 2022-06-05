@@ -17,10 +17,6 @@ import pandas as pd
 import utils, dataloader
 from model.transformer import Transformer
 from torch.optim import SGD, Adam
-try:
-    from torch.utils.tensorboard import SummaryWriter
-except ImportError:
-    from tensorboardX import SummaryWriter
 device = torch.device("cuda" if torch.cuda.is_available() else 'cpu')
 
 
@@ -35,7 +31,7 @@ def train(dataloader, epochs, model, criterion, optimizer, args, model_root):
 	correct = 0
 
 	cnt = 0
-	global best_acc
+	best_acc = None
 	for epoch in range(epochs):
 
 		for idx, (src, tgt) in enumerate(dataloader):
@@ -54,6 +50,7 @@ def train(dataloader, epochs, model, criterion, optimizer, args, model_root):
 			outputs = model(src, tgt[:,:-1], teacher_force=True)
 
 			outputs = outputs.reshape(src.shape[0] * args.max_len, -1)
+			tgt = tgt[:,1:]
 			tgt = tgt.reshape(-1)
 
 			loss = criterion(outputs, tgt)
@@ -71,20 +68,17 @@ def train(dataloader, epochs, model, criterion, optimizer, args, model_root):
 
 			cnt += tgt_acc.shape[0]
 
-			# verbose
-			batches_done = (epoch - 1) * len(dataloader) + idx
-			batches_left = args.n_epochs * len(dataloader) - batches_done
-			prev_time = time.time()
-
 		tr_loss /= cnt
 		tr_acc = correct / cnt
 
 		print("[epoch {:3d}/{:3d}] loss: {:.6f} acc: {:.4f})".format(
-			epoch, args.n_epochs, tr_loss, tr_acc*100), end='\n')
+			epoch+1, args.n_epochs, tr_loss, tr_acc*100), end='\n')
 
 		if best_acc is None or tr_acc >= best_acc:
 			torch.save(model.state_dict(), model_root)
 			best_acc = tr_acc 
+	
+	print("Training complete! Best train accuracy: {:.2f}.".format(best_acc*100))
 
 	return tr_loss, tr_acc
 
@@ -140,7 +134,7 @@ def main():
 	# hyper-parameters
 	parser.add_argument('--n_epochs', type=int, default=100)
 	parser.add_argument('--batch_size', type=int, default=128)
-	parser.add_argument('--lr', type=float, default=5e-4)
+	parser.add_argument('--lr', type=float, default=0.0005)
 	parser.add_argument('--beta1', type=float, default=0.9, help='Beta1 hyper-parameter for Adam optimizer')
 	parser.add_argument('--beta2', type=float, default=0.98, help='Beta2 hyper-parameter for Adam optimizer')
 	parser.add_argument('--eps', type=float, default=1e-9, help='Epsilon hyper-parameter for Adam optimizer')
@@ -199,11 +193,9 @@ def main():
 	optimizer = optim.Adam(model.parameters(), lr=args.lr) # weight decay
 
 	### Train
-	best_acc = None
 	tr_loss, tr_acc = train(tr_dataloader, args.n_epochs, model, criterion, optimizer, args, 'nlp-lab-5/result/model.pt')
 	
 	print("\n[ Elapsed Time: {:.4f} ]".format(time.time() - t_start))
-	print("Training complete! Best train accuracy: {:.2f}.".format(best_acc*100))
 
 	### Test
 	with open('nlp-lab-5/data/de-en/length.npy', 'rb') as f:
@@ -212,7 +204,7 @@ def main():
 	model.load_state_dict(torch.load('nlp-lab-5/result/model.pt', map_location=device))
 	pred = test(ts_dataloader, model=model, args=args, lengths=lengths)
 
-	test_id = ['S'+'{0:05d}'.format(i+1) for i in range(len(pred))]
+	test_id = ['S'+'{0:05d}'.format(i) for i in range(len(pred))]
 	result_df = pd.DataFrame(
 		{'ID': test_id,
 		'label': pred
