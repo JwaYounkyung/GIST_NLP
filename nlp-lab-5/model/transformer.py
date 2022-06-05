@@ -10,22 +10,20 @@ from model.sub_layers import Encoder, Decoder
 device = torch.device("cuda" if torch.cuda.is_available() else 'cpu')
 
 class Transformer(nn.Module):
-    def __init__(self, num_token_src, num_token_tgt, src_pad_idx, tgt_pad_idx, max_seq_len, dim_model, n_head=8, dim_hidden=2048, d_prob=0.1, n_enc_layer=6, n_dec_layer=6):
+    def __init__(self, num_token, pad_idx, max_seq_len, dim_model, n_head=8, dim_hidden=2048, d_prob=0.1, n_enc_layer=6, n_dec_layer=6):
         super(Transformer, self).__init__()
 
         """
         each variable is one of example, so you can change it, it's up to your coding style.
         """
+        self.num_token = num_token
+        self.pad_idx = pad_idx
         self.max_seq_len = max_seq_len
         self.dim_model = dim_model
 
-        self.src_pad_idx = src_pad_idx
-        self.tgt_pad_idx = tgt_pad_idx
-
         self.emb_scale = dim_model ** 0.5
         
-        self.s_vocab_embedding = nn.Embedding(num_token_src, dim_model)
-        self.t_vocab_embedding = nn.Embedding(num_token_tgt, dim_model)
+        self.vocab_embedding = nn.Embedding(num_token, dim_model)
 
         self.s_emb_dropout = nn.Dropout(d_prob)
         self.t_emb_dropout = nn.Dropout(d_prob)
@@ -43,7 +41,7 @@ class Transformer(nn.Module):
         self.encoder = Encoder(dim_model, n_head, dim_hidden, d_prob, n_enc_layer)
         self.decoder = Decoder(dim_model, n_head, dim_hidden, d_prob, n_dec_layer)
         self.classifier = nn.Sequential(
-            nn.Linear(dim_model, num_token_tgt),
+            nn.Linear(dim_model, num_token),
             nn.LogSoftmax(dim=-1)
         )
 
@@ -51,32 +49,31 @@ class Transformer(nn.Module):
         batch_size = tgt.shape[0]
         t_size = tgt.size()[1]
         # Encoder
-        src_mask = pad_mask(src, self.src_pad_idx)
+        src_mask = pad_mask(src, self.pad_idx)
         enc_output = self.encode(src, src_mask)
-
         
-        t_mask = pad_mask(tgt, self.tgt_pad_idx)
+        t_mask = pad_mask(tgt, self.pad_idx)
         t_self_mask = masked_attn_mask(t_size, tgt.device)
         tgt_mask = t_mask | t_self_mask
 
-        input = tgt[:,0:1]
-        outputs = torch.zeros(batch_size, t_size, self.dim_model).to(tgt.device)
+        input = tgt
+        outputs = torch.zeros(batch_size, t_size, self.num_token).to(tgt.device)
 
         # Decoder 
         for t in range(t_size):
-            output = self.decode(input, enc_output, 
-                                src_mask[:,:,:,t:t+1], tgt_mask[:,:,t:t+1,t:t+1])
-            outputs[:,t:t+1,:] = output
+            output = self.decode(input, enc_output,  
+                                src_mask, tgt_mask[:,:,t,:].unsqueeze(2), t) #
+            output = self.classifier(output)
+            outputs = torch.cat([outputs[:,:t,:], output, outputs[:,t+1:,:]], dim=1)
             top1 = output.argmax(2)
-            input = tgt[:,t:t+1] if teacher_force else top1
+            if teacher_force==False:
+                input = torch.cat([input[:,:t+1], top1, input[:,t+2:]], dim=1)
 
-        output = self.classifier(outputs)
-
-        return output
+        return outputs
     
     def encode(self, src, src_mask):
         # source embedding
-        src_embedded = self.s_vocab_embedding(src)
+        src_embedded = self.vocab_embedding(src)
         src_embedded = src_embedded*self.emb_scale + self.get_position_encoding(src)
         src_embedded = self.s_emb_dropout(src_embedded)
 
@@ -84,14 +81,14 @@ class Transformer(nn.Module):
 
         return encoder_output
     
-    def decode(self, targets, enc_output, src_mask, tgt_mask):
+    def decode(self, targets, enc_output, src_mask, tgt_mask, t):
         # target embedding
-        target_embedded = self.t_vocab_embedding(targets)
+        target_embedded = self.vocab_embedding(targets)
         target_embedded = target_embedded*self.emb_scale + self.get_position_encoding(targets)
         target_embedded = self.t_emb_dropout(target_embedded)
 
         # decoder
-        decoder_output = self.decoder(target_embedded, enc_output, src_mask, tgt_mask)
+        decoder_output = self.decoder(target_embedded, enc_output, src_mask, tgt_mask, t)
 
         return decoder_output
 

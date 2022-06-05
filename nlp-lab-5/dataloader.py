@@ -21,15 +21,14 @@ class NMTSimpleDataset:
 
         src, tgt = [], []
 
-        orig_src, src, vocab_src = self.load_data(src_filepath, vocab=vocab[0], is_src=is_src, is_train=is_train)
+        orig_src, src, vocab = self.load_data(src_filepath, vocab=vocab[0], is_src=is_src, is_train=is_train)
         self.orig_src = orig_src
         self.src = src
-        self.vocab_src = vocab_src
 
-        orig_tgt, tgt, vocab_tgt = self.load_data(tgt_filepath, vocab=vocab[1], is_src=is_tgt, is_train=is_train)
+        orig_tgt, tgt, vocab = self.load_data(tgt_filepath, vocab=vocab, is_src=is_tgt, is_train=is_train)
         self.orig_tgt = orig_tgt
         self.tgt = tgt
-        self.vocab_tgt = vocab_tgt
+        self.vocab = vocab
 
     def __getitem__(self, index):
         data, targets = self.src[index], self.tgt[index]

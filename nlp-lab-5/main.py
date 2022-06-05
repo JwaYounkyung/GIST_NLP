@@ -50,8 +50,7 @@ def train(dataloader, epochs, model, criterion, optimizer, args, model_root):
 			outputs = model(src, tgt[:,:-1], teacher_force=True)
 
 			outputs = outputs.reshape(src.shape[0] * args.max_len, -1)
-			tgt = tgt[:,1:]
-			tgt = tgt.reshape(-1)
+			tgt = tgt[:,1:].reshape(-1)
 
 			loss = criterion(outputs, tgt)
 			tr_loss += loss.item()
@@ -158,27 +157,20 @@ def main():
 	ts_dataset = dataloader.NMTSimpleDataset(max_len=args.max_len,
 											 src_filepath='nlp-lab-5//data/de-en/nmt_simple.src.test.txt',
 											 tgt_filepath=None,
-											 vocab=(tr_dataset.vocab_src, None),
+											 vocab=(tr_dataset.vocab, None),
 											 is_src=True, is_tgt=False, is_train=False)
 
 
-	vocab_src = tr_dataset.vocab_src
-	vocab_tgt = tr_dataset.vocab_tgt
-	i2w_src = {v:k for k, v in vocab_src.items()}
-	i2w_tgt = {v:k for k, v in vocab_tgt.items()}
-	src_pad_idx = vocab_src['[PAD]']
-	tgt_pad_idx = vocab_tgt['[PAD]']
-
-	num_token_src = len(vocab_src)
-	num_token_tgt = len(vocab_tgt)
+	vocab = tr_dataset.vocab
+	i2w = {v:k for k, v in vocab.items()}
+	num_token = len(vocab)
+	pad_idx = vocab['[PAD]']
 
 	tr_dataloader = DataLoader(tr_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True, num_workers=2)
 	ts_dataloader = DataLoader(ts_dataset, batch_size=args.batch_size, shuffle=False, drop_last=False, num_workers=2)
 
-	model = Transformer(num_token_src=num_token_src,
-						num_token_tgt=num_token_tgt,
-						src_pad_idx=src_pad_idx,
-						tgt_pad_idx=tgt_pad_idx,
+	model = Transformer(num_token=num_token,
+						pad_idx=pad_idx,
 						max_seq_len=args.max_len,
 						dim_model=args.model_dim,
 						n_head=args.n_head,
@@ -189,7 +181,7 @@ def main():
 	model.init_weights()
 	model = model.to(device)
 
-	criterion = nn.NLLLoss(ignore_index=tgt_pad_idx) 
+	criterion = nn.NLLLoss(ignore_index=pad_idx) 
 	optimizer = optim.Adam(model.parameters(), lr=args.lr) # weight decay
 
 	### Train

@@ -52,7 +52,8 @@ class MultiHeadAttention(nn.Module):
         k = self.linear_k(k)
         v = self.linear_v(v)
 
-        q = q.view(batch_size, -1, self.n_head, d_k).permute(0, 2, 1, 3) # num of heads로 나눠줌 
+        # Multi-Head
+        q = q.view(batch_size, -1, self.n_head, d_k).permute(0, 2, 1, 3) 
         k = k.view(batch_size, -1, self.n_head, d_k).permute(0, 2, 1, 3) 
         v = v.view(batch_size, -1, self.n_head, d_v).permute(0, 2, 1, 3)
 
@@ -115,14 +116,15 @@ class DecoderLayer(nn.Module):
         self.ffn_dropout = nn.Dropout(d_prob)
         self.ffn_norm = nn.LayerNorm(dim_model)
 
-    def forward(self, x, enc_output, src_mask, trg_mask):
+    def forward(self, x, enc_output, src_mask, tgt_mask, t):
+        origin_x = x[:] ### 
         # Masked Decoder Self-Attention
-        y = self.self_attention(x, x, x, trg_mask)
+        y = self.self_attention(x[:,t,:].unsqueeze(1), x, x, tgt_mask) # Attention Score의 t행
         y = self.self_attention_dropout(y)
-        x = self.self_attention_norm(x + y)
+        x = self.self_attention_norm(x[:,t,:].unsqueeze(1) + y)
 
         # Encoder-Decoder Attention
-        y = self.enc_dec_attention(x, enc_output, enc_output, src_mask) # q, k, v
+        y = self.enc_dec_attention(x, enc_output, enc_output, src_mask) 
         y = self.enc_dec_attention_dropout(y)
         x = self.enc_dec_attention_norm(x + y)
         
@@ -131,7 +133,9 @@ class DecoderLayer(nn.Module):
         y = self.ffn_dropout(y)
         x = self.ffn_norm(x + y)
 
-        return x
+        origin_x = torch.cat([origin_x[:,:t,:], x, origin_x[:,t+1:,:]], dim=1)
+
+        return origin_x
 
 
 class Encoder(nn.Module):
@@ -157,9 +161,9 @@ class Decoder(nn.Module):
                     for _ in range(n_dec_layer)]
         self.layers = nn.ModuleList(decoders)
 
-    def forward(self, targets, enc_output, src_mask, trg_mask):
+    def forward(self, targets, enc_output, src_mask, tgt_mask, t):
         decoder_output = targets
         for dec_layer in self.layers:
             decoder_output = dec_layer(decoder_output, enc_output,
-                                       src_mask, trg_mask)
-        return decoder_output
+                                       src_mask, tgt_mask, t)
+        return decoder_output[:,t,:].unsqueeze(1)
