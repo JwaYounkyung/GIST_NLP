@@ -57,14 +57,14 @@ class Transformer(nn.Module):
         tgt_mask = t_mask | t_self_mask
 
         input = tgt
-        outputs = torch.zeros(batch_size, t_size, self.num_token).to(tgt.device)
+        outputs = torch.zeros(batch_size, t_size, self.num_token).to(tgt.device) # 그냥 list append로 해도 될듯
 
         # Decoder 
         for t in range(t_size):
             output = self.decode(input, enc_output,  
-                                src_mask, tgt_mask[:,:,t,:].unsqueeze(2), t) #
+                                src_mask, tgt_mask[:,:,t,:].unsqueeze(2), t) 
             output = self.classifier(output)
-            outputs = torch.cat([outputs[:,:t,:], output, outputs[:,t+1:,:]], dim=1)
+            outputs[:,t:t+1,:] = output
             top1 = output.argmax(2)
             if teacher_force==False:
                 input = torch.cat([input[:,:t+1], top1, input[:,t+2:]], dim=1)

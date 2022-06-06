@@ -132,7 +132,7 @@ def main():
 
 	# hyper-parameters
 	parser.add_argument('--n_epochs', type=int, default=100)
-	parser.add_argument('--batch_size', type=int, default=128)
+	parser.add_argument('--batch_size', type=int, default=64)
 	parser.add_argument('--lr', type=float, default=0.0005)
 	parser.add_argument('--beta1', type=float, default=0.9, help='Beta1 hyper-parameter for Adam optimizer')
 	parser.add_argument('--beta2', type=float, default=0.98, help='Beta2 hyper-parameter for Adam optimizer')
