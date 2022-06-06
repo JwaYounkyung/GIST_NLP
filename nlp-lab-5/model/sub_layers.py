@@ -5,25 +5,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-
-class FeedForwardNetwork(nn.Module):
-    def __init__(self, dim_model, dim_hidden, d_prob):
-        super(FeedForwardNetwork, self).__init__()
-
-        self.layer1 = nn.Linear(dim_model, dim_hidden)
-        self.relu = nn.ReLU()
-        self.dropout = nn.Dropout(d_prob)
-        self.layer2 = nn.Linear(dim_hidden, dim_model)
-
-
-    def forward(self, x):
-        x = self.layer1(x)
-        x = self.relu(x)
-        x = self.dropout(x)
-        x = self.layer2(x)
-        return x
-
-
 class MultiHeadAttention(nn.Module):
     def __init__(self, dim_model, n_head, d_prob):
         super(MultiHeadAttention, self).__init__()
@@ -73,6 +54,22 @@ class MultiHeadAttention(nn.Module):
 
         return x
 
+class FeedForwardNetwork(nn.Module):
+    def __init__(self, dim_model, dim_hidden, d_prob):
+        super(FeedForwardNetwork, self).__init__()
+
+        self.layer1 = nn.Linear(dim_model, dim_hidden)
+        self.relu = nn.ReLU()
+        self.dropout = nn.Dropout(d_prob)
+        self.layer2 = nn.Linear(dim_hidden, dim_model)
+
+
+    def forward(self, x):
+        x = self.layer1(x)
+        x = self.relu(x)
+        x = self.dropout(x)
+        x = self.layer2(x)
+        return x
 
 class EncoderLayer(nn.Module):
     def __init__(self, dim_model, n_head, dim_hidden, d_prob):
