@@ -5,6 +5,25 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+
+class FeedForwardNetwork(nn.Module):
+    def __init__(self, dim_model, dim_hidden, d_prob):
+        super(FeedForwardNetwork, self).__init__()
+
+        self.layer1 = nn.Linear(dim_model, dim_hidden)
+        self.relu = nn.ReLU()
+        self.dropout = nn.Dropout(d_prob)
+        self.layer2 = nn.Linear(dim_hidden, dim_model)
+
+
+    def forward(self, x):
+        x = self.layer1(x)
+        x = self.relu(x)
+        x = self.dropout(x)
+        x = self.layer2(x)
+        return x
+
+
 class MultiHeadAttention(nn.Module):
     def __init__(self, dim_model, n_head, d_prob):
         super(MultiHeadAttention, self).__init__()
@@ -54,22 +73,6 @@ class MultiHeadAttention(nn.Module):
 
         return x
 
-class FeedForwardNetwork(nn.Module):
-    def __init__(self, dim_model, dim_hidden, d_prob):
-        super(FeedForwardNetwork, self).__init__()
-
-        self.layer1 = nn.Linear(dim_model, dim_hidden)
-        self.relu = nn.ReLU()
-        self.dropout = nn.Dropout(d_prob)
-        self.layer2 = nn.Linear(dim_hidden, dim_model)
-
-
-    def forward(self, x):
-        x = self.layer1(x)
-        x = self.relu(x)
-        x = self.dropout(x)
-        x = self.layer2(x)
-        return x
 
 class EncoderLayer(nn.Module):
     def __init__(self, dim_model, n_head, dim_hidden, d_prob):
@@ -113,11 +116,17 @@ class DecoderLayer(nn.Module):
         self.ffn_dropout = nn.Dropout(d_prob)
         self.ffn_norm = nn.LayerNorm(dim_model)
 
-    def forward(self, x, enc_output, src_mask, tgt_mask):
+    def forward(self, x, enc_output, src_mask, tgt_mask, t):
+        if t==None:
+            z = x
+        else:
+            origin_x = x[:] 
+            z = x[:,t,:].unsqueeze(1)
+
         # Masked Decoder Self-Attention
-        y = self.self_attention(x, x, x, tgt_mask)
+        y = self.self_attention(z, x, x, tgt_mask) # Attention Score의 t행
         y = self.self_attention_dropout(y)
-        x = self.self_attention_norm(x + y)
+        x = self.self_attention_norm(z + y)
 
         # Encoder-Decoder Attention
         y = self.enc_dec_attention(x, enc_output, enc_output, src_mask) 
@@ -129,7 +138,10 @@ class DecoderLayer(nn.Module):
         y = self.ffn_dropout(y)
         x = self.ffn_norm(x + y)
 
-        return x
+        if t==None:
+            return x
+        else:
+            return torch.cat([origin_x[:,:t,:], x, origin_x[:,t+1:,:]], dim=1)
 
 
 class Encoder(nn.Module):
@@ -155,9 +167,12 @@ class Decoder(nn.Module):
                     for _ in range(n_dec_layer)]
         self.layers = nn.ModuleList(decoders)
 
-    def forward(self, targets, enc_output, src_mask, tgt_mask):
+    def forward(self, targets, enc_output, src_mask, tgt_mask, t):
         decoder_output = targets
         for dec_layer in self.layers:
             decoder_output = dec_layer(decoder_output, enc_output,
-                                       src_mask, tgt_mask)
-        return decoder_output
+                                       src_mask, tgt_mask, t)
+        if t==None:
+            return decoder_output
+        else:
+            return decoder_output[:,t,:].unsqueeze(1)

@@ -92,14 +92,14 @@ def test(dataloader, model, args, lengths=None):
 		for src, tgt in dataloader:
 			src, tgt = src.to(device), tgt.to(device)
 
-			outputs = model(src, tgt[:,:-1], train=False)
+			outputs = model(src, tgt[:,:-1], train=False) # in test teacher forcing off
 
 			for i in range(outputs.shape[0]):
 				"""
 				ToDo: Output (total_pred) is the model predict of test dataset
 				Variable lenghts is the length information of the target length.
 				"""
-				pred = outputs[i]
+				pred = outputs[i].argmax(dim=-1)
 				total_pred.append(pred[:lengths[idx+i]].detach().cpu().numpy())
 			
 			idx += args.batch_size
