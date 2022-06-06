@@ -45,7 +45,7 @@ class Transformer(nn.Module):
             nn.LogSoftmax(dim=-1)
         )
 
-    def forward(self, src, tgt, teacher_force=True):
+    def forward(self, src, tgt, train=True):
         batch_size = tgt.shape[0]
         t_size = tgt.size()[1]
         # Encoder
@@ -56,18 +56,25 @@ class Transformer(nn.Module):
         t_self_mask = masked_attn_mask(t_size, tgt.device)
         tgt_mask = t_mask | t_self_mask
 
-        input = tgt
-        outputs = torch.zeros(batch_size, t_size, self.num_token).to(tgt.device) # 그냥 list append로 해도 될듯
+        if train:
+            outputs = self.decode(tgt, enc_output, src_mask, tgt_mask, t=None)
+            outputs = self.classifier(outputs)
+        else:
+            input = tgt
+            # outputs = torch.zeros(batch_size, t_size, self.num_token).to(tgt.device) # 그냥 list append로 해도 될듯
+            outputs = []
 
-        # Decoder 
-        for t in range(t_size):
-            output = self.decode(input, enc_output,  
-                                src_mask, tgt_mask[:,:,t,:].unsqueeze(2), t) 
-            output = self.classifier(output)
-            outputs[:,t:t+1,:] = output
-            top1 = output.argmax(2)
-            if teacher_force==False:
+            # Decoder 
+            for t in range(t_size):
+                output = self.decode(input, enc_output,  
+                                    src_mask, tgt_mask[:,:,t,:].unsqueeze(2), t) 
+                output = self.classifier(output)
+                # outputs = torch.cat([outputs[:,:t,:], output, outputs[:,t+1:,:]], dim=1)
+                outputs.append(output)
+                top1 = output.argmax(2)
                 input = torch.cat([input[:,:t+1], top1, input[:,t+2:]], dim=1)
+            
+            outputs = torch.cat(outputs)
 
         return outputs
     

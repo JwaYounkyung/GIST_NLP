@@ -117,11 +117,16 @@ class DecoderLayer(nn.Module):
         self.ffn_norm = nn.LayerNorm(dim_model)
 
     def forward(self, x, enc_output, src_mask, tgt_mask, t):
-        origin_x = x[:] ### 
+        if t==None:
+            z = x
+        else:
+            origin_x = x[:] 
+            z = x[:,t,:].unsqueeze(1)
+
         # Masked Decoder Self-Attention
-        y = self.self_attention(x[:,t,:].unsqueeze(1), x, x, tgt_mask) # Attention Score의 t행
+        y = self.self_attention(z, x, x, tgt_mask) # Attention Score의 t행
         y = self.self_attention_dropout(y)
-        x = self.self_attention_norm(x[:,t,:].unsqueeze(1) + y)
+        x = self.self_attention_norm(z + y)
 
         # Encoder-Decoder Attention
         y = self.enc_dec_attention(x, enc_output, enc_output, src_mask) 
@@ -133,9 +138,10 @@ class DecoderLayer(nn.Module):
         y = self.ffn_dropout(y)
         x = self.ffn_norm(x + y)
 
-        origin_x = torch.cat([origin_x[:,:t,:], x, origin_x[:,t+1:,:]], dim=1)
-
-        return origin_x
+        if t==None:
+            return x
+        else:
+            return torch.cat([origin_x[:,:t,:], x, origin_x[:,t+1:,:]], dim=1)
 
 
 class Encoder(nn.Module):
@@ -166,4 +172,7 @@ class Decoder(nn.Module):
         for dec_layer in self.layers:
             decoder_output = dec_layer(decoder_output, enc_output,
                                        src_mask, tgt_mask, t)
-        return decoder_output[:,t,:].unsqueeze(1)
+        if t==None:
+            return decoder_output
+        else:
+            return decoder_output[:,t,:].unsqueeze(1)

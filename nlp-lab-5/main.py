@@ -47,7 +47,7 @@ def train(dataloader, epochs, model, criterion, optimizer, args, model_root):
 			src, tgt = src.to(device), tgt.to(device)
 
 			optimizer.zero_grad()
-			outputs = model(src, tgt[:,:-1], teacher_force=True)
+			outputs = model(src, tgt[:,:-1], train=True)
 
 			outputs = outputs.reshape(src.shape[0] * args.max_len, -1)
 			tgt = tgt[:,1:].reshape(-1)
@@ -92,7 +92,7 @@ def test(dataloader, model, args, lengths=None):
 		for src, tgt in dataloader:
 			src, tgt = src.to(device), tgt.to(device)
 
-			outputs = model(src, tgt[:,:-1], teacher_force=False) # in test teacher forcing off
+			outputs = model(src, tgt[:,:-1], train=False) # in test teacher forcing off
 
 			for i in range(outputs.shape[0]):
 				"""
@@ -132,7 +132,7 @@ def main():
 
 	# hyper-parameters
 	parser.add_argument('--n_epochs', type=int, default=100)
-	parser.add_argument('--batch_size', type=int, default=64)
+	parser.add_argument('--batch_size', type=int, default=128)
 	parser.add_argument('--lr', type=float, default=0.0005)
 	parser.add_argument('--beta1', type=float, default=0.9, help='Beta1 hyper-parameter for Adam optimizer')
 	parser.add_argument('--beta2', type=float, default=0.98, help='Beta2 hyper-parameter for Adam optimizer')
